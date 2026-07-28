@@ -136,6 +136,10 @@ class TapClusterDetector(
             recentMagnitudes.removeFirst()
         }
 
+        // חור-אבחוני שתוקן: קודם רק דחיות נכתבו ללוג, אף שורה על קבלה —
+        // אי-אפשר היה להבדיל "כלום לא התקבל" מ"התקבלו 3, צריך 4".
+        onLog("DEBUG", "tap_candidate_accepted;count=${recentSpikes.size};magnitude=${"%.2f".format(magnitude)}")
+
         if (recentSpikes.size >= DebugConfig.TAP_COUNT_THRESHOLD) {
             if (isRhythmRegular(recentSpikes)) {
                 val count = recentSpikes.size
