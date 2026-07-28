@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.media.MediaPlayer
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -32,6 +33,7 @@ class HelpMenuActivity : Activity() {
     }
 
     private lateinit var source: String
+    private var player: MediaPlayer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -115,14 +117,21 @@ class HelpMenuActivity : Activity() {
             return
         }
         try {
-            val player = android.media.MediaPlayer()
-            player.setDataSource(path)
-            player.prepare()
-            player.start()
+            player?.release()
+            player = MediaPlayer().apply {
+                setDataSource(path)
+                prepare()
+                start()
+            }
             android.widget.Toast.makeText(this, "מנגן את ההקלטה שלך…", android.widget.Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
             android.widget.Toast.makeText(this, "לא הצלחתי לנגן את ההקלטה", android.widget.Toast.LENGTH_SHORT).show()
         }
+    }
+
+    override fun onDestroy() {
+        player?.release()
+        super.onDestroy()
     }
 
     private fun showTips() {
