@@ -52,6 +52,8 @@ jobs:
           name: "Debug build #${{ github.run_number }}"
           body: "Commit: ${{ github.sha }}"
           prerelease: true
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: |
+            app/build/outputs/apk/debug/app-debug.apk
+            rescue/build/outputs/apk/debug/rescue-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

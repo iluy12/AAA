@@ -1,0 +1,38 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// אפליקציית-חילוץ נפרדת, בשם-חבילה שונה בכוונה.
+//
+// הסיבה: כל build ב-CI נחתם במפתח-דיבאג אקראי (הרץ נוצר מאפס בכל פעם),
+// ואנדרואיד מסרב להתקין גרסה חדשה מעל אפליקציה שנחתמה במפתח אחר. כלומר
+// אי-אפשר לתקן את עילוי בהתקנה-מעל — חייבים להסיר קודם. וכשעילוי היא
+// מסך-הבית ואין דרך להגיע להגדרות, אי-אפשר להסיר.
+//
+// שם-חבילה שונה עוקף את זה לגמרי: מותקן לצד עילוי בלי התנגשות, ומתקין-
+// החבילות מציג "פתח" מיד אחרי ההתקנה — שזו דרך להפעיל אפליקציה בלי
+// מסך-בית בכלל.
+android {
+    namespace 'com.iluy.rescue'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.iluy.rescue"
+        minSdk 26
+        targetSdk 28
+        versionCode 1
+        versionName "1.0"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+}
+
+dependencies {
+}
