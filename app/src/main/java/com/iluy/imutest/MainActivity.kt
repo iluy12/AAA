@@ -119,6 +119,14 @@ class MainActivity : Activity() {
             container.addView(display)
         }
 
+        container.addView(TextView(this).apply {
+            text = "גרסה ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · נבנה ${BuildConfig.BUILD_TIMESTAMP}"
+            textSize = 9f
+            setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+            gravity = Gravity.CENTER
+            setPadding(0, 32, 0, 0)
+        })
+
         setContentView(scroll)
     }
 

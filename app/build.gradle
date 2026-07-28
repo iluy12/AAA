@@ -18,6 +18,13 @@ android {
         targetSdk 28
         versionCode 2
         versionName "1.0-v1"
+
+        // גלוי במסך הבית — כדי לדעת בוודאות איזו גרסה מותקנת בפועל בלי לנחש.
+        buildConfigField "String", "BUILD_TIMESTAMP", "\"${new Date().format("yyyy-MM-dd HH:mm")}\""
+    }
+
+    buildFeatures {
+        buildConfig true
     }
 
     buildTypes {
