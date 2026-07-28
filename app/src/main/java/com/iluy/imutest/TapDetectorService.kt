@@ -3,7 +3,6 @@ package com.iluy.imutest
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -243,36 +242,11 @@ class TapDetectorService : Service(), SensorEventListener {
         } else {
             LocalStore.setTapStandbyUntil(this, now + DebugConfig.STANDBY_DURATION_MS)
             EventLog.log(this, "TRIGGER", "tap_first_in_hour;$debugDetail")
-            sendVideoNotification(debugDetail)
+            // חלק 3.1 (הועלה-בעדיפות): ההקשה היא אירוע חיובי, לא צריכה
+            // מסך-בחירה. מחליף את ה-notification+VideoPlaceholderActivity
+            // הישנים באישור-קל שמדליק מסך+צליל ונסגר לבד, בלי כפתורים.
+            TapAcknowledgedActivity.launch(this, source = debugDetail)
         }
-    }
-
-    private fun sendVideoNotification(debugDetail: String) {
-        val intent = Intent(this, VideoPlaceholderActivity::class.java).apply {
-            putExtra(VideoPlaceholderActivity.EXTRA_SOURCE, debugDetail)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        else PendingIntent.FLAG_UPDATE_CURRENT
-        val pendingIntent = PendingIntent.getActivity(this, 1, intent, flags)
-
-        val nm = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                "iluy_video_channel", "עילוי — הודעות", NotificationManager.IMPORTANCE_HIGH
-            )
-            nm?.createNotificationChannel(channel)
-        }
-        val notification = NotificationCompat.Builder(this, "iluy_video_channel")
-            .setContentTitle("עילוי שלחו לך סרטון")
-            .setContentText("לחץ לצפייה")
-            .setSmallIcon(android.R.drawable.ic_menu_compass)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-            .build()
-        nm?.notify(NOTIFICATION_ID + 1, notification)
     }
 
     private fun buildNotification(): android.app.Notification {
