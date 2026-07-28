@@ -377,9 +377,11 @@ class QuestionnaireActivity : Activity() {
     }
 
     /**
-     * הוראת-הדפיקה החדשה: "דפוק כמו על דלת" — במקום ללמד קוד-לחיצות
-     * שרירותי, מבקשים תנועה שכל אדם כבר יודע לבצע בטבעיות. זה גם נותן
-     * לאלגוריתם קצב-יעד ברור (TAP_MAX_INTERVAL_MS) במקום לנחש טווח כללי.
+     * הוראת-ההקשה, כפי שננעלה בבדיקות-שטח: 3 הקשות במרכז המסך, בנחרצות —
+     * לא מסגרת, לא גב, לא וריאציות. "בנחרצות" קריטי ולא קישוט: נמצא
+     * בפועל שהקשה רכה נמרחת על פני כמה מדגמים עם עלייה הדרגתית בעוצמה,
+     * וב-25Hz (תקרת-החומרה) ההפרש בין מדגם למדגם לא חוצה את סף ה-jerk —
+     * בלי המילה הזו משתמשים מקישים רך וזה לא נקלט אצלם.
      *
      * "התחל תרגול" מפעיל האזנה אמיתית ל-accelerometer, דרך אותו
      * TapClusterDetector שמשמש את TapDetectorService — רק עם סף-רצפה נמוך
@@ -398,16 +400,16 @@ class QuestionnaireActivity : Activity() {
 
         addTitle(container, "איך לדווח")
         container.addView(TextView(this).apply {
-            text = "בכל פעם שהתגברת על ניסיון — דפוק על גוף השעון עצמו, " +
-                "כמו שהיית דופק בדלת של מישהו שבאת לבקר אצלו.\n\n" +
-                "3–4 דפיקות, בקצב טבעי — לא לחפז ולא להאט במיוחד."
+            text = "בכל פעם שהתגברת על ניסיון — הקש 3 פעמים במרכז המסך, " +
+                "בנחרצות.\n\n" +
+                "לא בעדינות — הקשה רכה לא תיקלט."
             textSize = 14f
             setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
             setPadding(0, 0, 0, 20)
         })
 
         val statusText = TextView(this).apply {
-            text = "לחץ 'התחל תרגול' ודפוק על השעון כמו בהוראה למעלה"
+            text = "לחץ 'התחל תרגול' והקש 3 פעמים במרכז המסך, בנחרצות"
             textSize = 13f
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 16)
@@ -465,7 +467,7 @@ class QuestionnaireActivity : Activity() {
         startButton.setOnClickListener {
             startButton.visibility = View.GONE
             skipButton.visibility = View.GONE
-            statusText.text = "מקשיב… דפוק עכשיו"
+            statusText.text = "מקשיב… הקש עכשיו, בנחרצות"
             startPracticeListening(
                 onDetected = { calibrated, weakest ->
                     LocalStore.setPersonalTapThreshold(this, calibrated)
