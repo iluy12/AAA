@@ -109,6 +109,7 @@ class TapDetectorService : Service(), SensorEventListener {
         super.onCreate()
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        logAvailableSensors()
         setupWornGating()
 
         detector = TapClusterDetector(
@@ -119,6 +120,47 @@ class TapDetectorService : Service(), SensorEventListener {
             sustainedMotionSuppressMs = DebugConfig.SUSTAINED_MOTION_SUPPRESS_MS,
             onLog = { tag, detail -> EventLog.log(this, tag, detail) },
             onTapPatternDetected = { count, _ -> onTapPatternDetected(count) }
+        )
+    }
+
+    /**
+     * אינוונטר-חיישנים חד-פעמי (מאחורי DEBUG_TAG_ENABLED). נבנה אחרי כמה
+     * סבבים שבהם הנחות על החומרה התבררו כשגויות (סף 22.0, תקרת 25Hz,
+     * הכובד מתחת לסף-הכיול, off-body שלא קיים) — עדיף לקרוא מהמכשיר מה
+     * באמת יש בו.
+     *
+     * power_ma ו-min_delay_us הם העיקר כאן, לא רק שמות: הראשון עונה על
+     * "מה אפשר להרשות לעצמנו מבחינת סוללה", השני נותן את תקרת-הקצב
+     * האמיתית של כל חיישן בלי לגלות אותה בשדה כמו שקרה עם ה-accelerometer.
+     */
+    private fun logAvailableSensors() {
+        if (!DebugConfig.DEBUG_TAG_ENABLED) return
+
+        val sensors = sensorManager.getSensorList(Sensor.TYPE_ALL)
+        EventLog.log(this, "INFO", "sensor_inventory_start;total=${sensors.size}")
+        for (s in sensors) {
+            EventLog.log(
+                this, "INFO",
+                "sensor;type=${s.type};name=${s.name};" +
+                    "power_ma=${"%.2f".format(s.power)};" +
+                    "min_delay_us=${s.minDelay};" +
+                    "max_range=${"%.1f".format(s.maximumRange)}"
+            )
+        }
+
+        // סיכום ממוקד למועמדים שרלוונטיים להחלטת-המחווה, כדי לא לחפש
+        // ידנית בתוך רשימה ארוכה על מסך 2 אינץ'
+        val has = { type: Int -> sensorManager.getDefaultSensor(type) != null }
+        EventLog.log(
+            this, "INFO",
+            "sensor_candidates;gyroscope=${has(Sensor.TYPE_GYROSCOPE)};" +
+                "proximity=${has(Sensor.TYPE_PROXIMITY)};" +
+                "light=${has(Sensor.TYPE_LIGHT)};" +
+                "step_detector=${has(Sensor.TYPE_STEP_DETECTOR)};" +
+                "step_counter=${has(Sensor.TYPE_STEP_COUNTER)};" +
+                "significant_motion=${has(Sensor.TYPE_SIGNIFICANT_MOTION)};" +
+                "rotation_vector=${has(Sensor.TYPE_ROTATION_VECTOR)};" +
+                "game_rotation_vector=${has(Sensor.TYPE_GAME_ROTATION_VECTOR)}"
         )
     }
 
