@@ -9,18 +9,33 @@ package com.iluy.imutest
  * magnitudeThreshold ניתן כפרמטר בכוונה: השירות מזין אותו עם הסף האישי
  * המכויל (או הגלובלי כברירת מחדל), והתרגול מזין אותו עם סף-רצפה נמוך כדי
  * לתפוס הקשות חלשות-יחסית ולכייל מהן.
+ *
+ * ## שער-תנוחה (referenceGravity)
+ *
+ * אם הוזן וקטור-כובד-ייחוס אישי, נפתחת שכבה נוספת: המנוע עוקב ברציפות
+ * אחרי התנוחה (כיוון הכובד) והיציבות (שונות בעוצמה), ומסמן "שער חם"
+ * כששניהם מתקיימים. הקשה שמגיעה כששער חם נבדקת מול ספים מוקלים
+ * משמעותית — כי התנוחה עצמה כבר עשתה את עבודת ההבחנה מרעש.
+ *
+ * referenceGravity == null → השער כבוי לגמרי והמנוע מתנהג בדיוק כמו קודם.
+ * זו נפילה-חזרה בטוחה: משתמש שלא כייל מקבל את ההתנהגות הקיימת, לא שבורה.
+ *
+ * הכל כאן רץ על ה-accelerometer שכבר פועל ממילא — x,y,z כבר מגיעים בכל
+ * מדגם. אין חיישן נוסף ואין עלות-סוללה נוספת.
  */
 class TapClusterDetector(
     // var, לא val: TapDetectorService מעדכן את זה בכל onStartCommand (לא
     // רק פעם אחת ב-onCreate) כדי לתפוס כיול-אישי שנשמר אחרי שהשירות כבר
     // קיים בזיכרון (למשל אחרי מילוי-שאלון-מחדש).
     var magnitudeThreshold: Double,
+    // אותה סיבה — מתעדכן בכל onStartCommand. null = שער כבוי.
+    var referenceGravity: FloatArray? = null,
     private val wornGatingEnabled: Boolean = false,
     private val isWorn: () -> Boolean = { true },
     private val wornSensorAvailable: () -> Boolean = { false },
     private val sustainedMotionSuppressMs: Long = DebugConfig.SUSTAINED_MOTION_SUPPRESS_MS,
     private val onLog: (tag: String, detail: String) -> Unit = { _, _ -> },
-    private val onTapPatternDetected: (count: Int, magnitudes: List<Double>) -> Unit
+    private val onTapPatternDetected: (count: Int, magnitudes: List<Double>, gravityAtStart: FloatArray?) -> Unit
 ) {
     companion object {
         /**
@@ -55,19 +70,33 @@ class TapClusterDetector(
 
     private var warnedLowThreshold = false
 
-    fun onSample(magnitude: Double, now: Long) {
-        val effectiveThreshold = if (magnitudeThreshold < ABSOLUTE_MINIMUM_MAGNITUDE_THRESHOLD) {
-            if (!warnedLowThreshold) {
-                warnedLowThreshold = true
-                onLog(
-                    "ERROR",
-                    "magnitude_threshold_below_safe_floor;configured=${"%.2f".format(magnitudeThreshold)};" +
-                        "using=$ABSOLUTE_MINIMUM_MAGNITUDE_THRESHOLD"
-                )
-            }
-            ABSOLUTE_MINIMUM_MAGNITUDE_THRESHOLD
+    // --- שער-תנוחה ויציבות ---
+    private val gravity = FloatArray(3)
+    private var gravityInitialized = false
+    private val stillnessWindow = ArrayDeque<Double>()
+    private var lastGateSatisfiedMs = 0L
+    private var gateSatisfiedNow = false
+    private var gravityAtClusterStart: FloatArray? = null
+
+    fun onSample(x: Float, y: Float, z: Float, now: Long) {
+        val magnitude = Math.sqrt((x * x + y * y + z * z).toDouble())
+
+        updateGravity(x, y, z)
+        updateStillnessWindow(magnitude)
+        evaluateGate(now)
+
+        // כששער חם — ספים מוקלים. זה כל הרווח: הקשה עדינה מספיקה, כי
+        // התנוחה+היציבות כבר הבדילו מרעש במקום העוצמה.
+        val gateWarm = isGateWarm(now)
+        val effectiveThreshold = if (gateWarm) {
+            DebugConfig.TAP_MAGNITUDE_THRESHOLD_GATED
         } else {
-            magnitudeThreshold
+            clampConfiguredThreshold()
+        }
+        val effectiveMinDelta = if (gateWarm) {
+            DebugConfig.TAP_MIN_DELTA_GATED
+        } else {
+            DebugConfig.TAP_MIN_DELTA
         }
 
         val prevMagnitude = lastMagnitude
@@ -75,7 +104,7 @@ class TapClusterDetector(
 
         val aboveThreshold = magnitude > effectiveThreshold
         val jumpedSuddenly = prevMagnitude != null &&
-            Math.abs(magnitude - prevMagnitude) > DebugConfig.TAP_MIN_DELTA
+            Math.abs(magnitude - prevMagnitude) > effectiveMinDelta
 
         if (aboveThreshold) {
             consecutiveAboveThresholdSamples++
@@ -86,7 +115,7 @@ class TapClusterDetector(
                 suppressed -> { /* מושתק בגלל תנועה רציפה */ }
                 debounced -> onLog("DEBUG", "tap_candidate_rejected_refractory")
                 !jumpedSuddenly -> { /* אין קפיצה חדה — כנראה המשך אותו פולס, לא דפיקה חדשה */ }
-                else -> evaluateCandidate(now, magnitude, consecutiveAboveThresholdSamples)
+                else -> evaluateCandidate(now, magnitude, consecutiveAboveThresholdSamples, gateWarm)
             }
         } else {
             consecutiveAboveThresholdSamples = 0
@@ -98,20 +127,85 @@ class TapClusterDetector(
         }
     }
 
-    private fun trackSustainedMotion(now: Long) {
-        if (sustainedMotionStartMs == null || now - lastSpikeAboveThresholdMs > 1_500L) {
-            sustainedMotionStartMs = now
+    /** סינון-נמוך: מפריד את הכובד (איטי) מתאוצה-לינארית (מהירה). */
+    private fun updateGravity(x: Float, y: Float, z: Float) {
+        if (!gravityInitialized) {
+            gravity[0] = x; gravity[1] = y; gravity[2] = z
+            gravityInitialized = true
+            return
         }
-        lastSpikeAboveThresholdMs = now
+        val a = DebugConfig.GRAVITY_FILTER_ALPHA.toFloat()
+        gravity[0] = a * gravity[0] + (1 - a) * x
+        gravity[1] = a * gravity[1] + (1 - a) * y
+        gravity[2] = a * gravity[2] + (1 - a) * z
+    }
 
-        val sustainedFor = now - (sustainedMotionStartMs ?: now)
-        if (sustainedFor > sustainedMotionSuppressMs && !suppressed) {
-            suppressed = true
-            onLog("INFO", "tap_detection_suppressed_sustained_motion")
+    private fun updateStillnessWindow(magnitude: Double) {
+        stillnessWindow.addLast(magnitude)
+        while (stillnessWindow.size > DebugConfig.STILLNESS_WINDOW_SAMPLES) {
+            stillnessWindow.removeFirst()
         }
     }
 
-    private fun evaluateCandidate(now: Long, magnitude: Double, pulseSamples: Int) {
+    private fun isStill(): Boolean {
+        if (stillnessWindow.size < DebugConfig.STILLNESS_WINDOW_SAMPLES) return false
+        val mean = stillnessWindow.average()
+        val variance = stillnessWindow.sumOf { (it - mean) * (it - mean) } / stillnessWindow.size
+        return Math.sqrt(variance) <= DebugConfig.STILLNESS_MAX_STDDEV
+    }
+
+    /** מכפלה-סקלרית מנורמלת בין הכובד הנוכחי לווקטור-הייחוס האישי. */
+    private fun orientationMatches(): Boolean {
+        val ref = referenceGravity ?: return false
+        if (!gravityInitialized || ref.size < 3) return false
+
+        val magNow = Math.sqrt(
+            (gravity[0] * gravity[0] + gravity[1] * gravity[1] + gravity[2] * gravity[2]).toDouble()
+        )
+        val magRef = Math.sqrt(
+            (ref[0] * ref[0] + ref[1] * ref[1] + ref[2] * ref[2]).toDouble()
+        )
+        if (magNow < 1e-3 || magRef < 1e-3) return false
+
+        val dot = (gravity[0] * ref[0] + gravity[1] * ref[1] + gravity[2] * ref[2]).toDouble() /
+            (magNow * magRef)
+        return dot >= DebugConfig.ORIENTATION_MATCH_MIN_DOT
+    }
+
+    /**
+     * נבדק בכל מדגם, לא רק בזמן הקשה — זו כל הנקודה. ההקשה עצמה שוברת
+     * את היציבות, אז היא שואלת אחר-כך רק "האם השער היה מסופק לאחרונה".
+     */
+    private fun evaluateGate(now: Long) {
+        if (referenceGravity == null) return // אין כיול → שער כבוי
+
+        val satisfied = orientationMatches() && isStill()
+        if (satisfied) lastGateSatisfiedMs = now
+        if (satisfied != gateSatisfiedNow) {
+            gateSatisfiedNow = satisfied
+            onLog("DEBUG", "orientation_gate_${if (satisfied) "satisfied" else "lost"}")
+        }
+    }
+
+    private fun isGateWarm(now: Long): Boolean =
+        referenceGravity != null &&
+            lastGateSatisfiedMs > 0L &&
+            (now - lastGateSatisfiedMs) <= DebugConfig.GATE_VALIDITY_MS
+
+    private fun clampConfiguredThreshold(): Double {
+        if (magnitudeThreshold >= ABSOLUTE_MINIMUM_MAGNITUDE_THRESHOLD) return magnitudeThreshold
+        if (!warnedLowThreshold) {
+            warnedLowThreshold = true
+            onLog(
+                "ERROR",
+                "magnitude_threshold_below_safe_floor;configured=${"%.2f".format(magnitudeThreshold)};" +
+                    "using=$ABSOLUTE_MINIMUM_MAGNITUDE_THRESHOLD"
+            )
+        }
+        return ABSOLUTE_MINIMUM_MAGNITUDE_THRESHOLD
+    }
+
+    private fun evaluateCandidate(now: Long, magnitude: Double, pulseSamples: Int, gateWarm: Boolean) {
         if (pulseSamples > DebugConfig.TAP_MAX_CONSECUTIVE_ABOVE_THRESHOLD_SAMPLES) {
             onLog("DEBUG", "tap_candidate_rejected_sustained_pulse")
             return
@@ -132,10 +226,12 @@ class TapClusterDetector(
         }
 
         if (recentSpikes.isEmpty()) {
-            // דפיקה ראשונה בצרור — הופכת ל"דוגמה" לכל השאר
+            // דפיקה ראשונה בצרור — הופכת ל"דוגמה" לכל השאר. שומרים גם את
+            // הכובד ברגע הזה: זו התנוחה שממנה אפשר לכייל ייחוס אישי חדש.
             referenceMagnitude = magnitude
             referencePulseSamples = pulseSamples
-            acceptIntoCluster(now, magnitude)
+            gravityAtClusterStart = gravity.copyOf()
+            acceptIntoCluster(now, magnitude, gateWarm)
             return
         }
 
@@ -154,10 +250,10 @@ class TapClusterDetector(
             return
         }
 
-        acceptIntoCluster(now, magnitude)
+        acceptIntoCluster(now, magnitude, gateWarm)
     }
 
-    private fun acceptIntoCluster(now: Long, magnitude: Double) {
+    private fun acceptIntoCluster(now: Long, magnitude: Double, gateWarm: Boolean) {
         lastAcceptedSpikeMs = now
         recentSpikes.addLast(now)
         recentMagnitudes.addLast(magnitude)
@@ -168,17 +264,23 @@ class TapClusterDetector(
 
         // חור-אבחוני שתוקן: קודם רק דחיות נכתבו ללוג, אף שורה על קבלה —
         // אי-אפשר היה להבדיל "כלום לא התקבל" מ"התקבלו 3, צריך 4".
-        onLog("DEBUG", "tap_candidate_accepted;count=${recentSpikes.size};magnitude=${"%.2f".format(magnitude)}")
+        onLog(
+            "DEBUG",
+            "tap_candidate_accepted;count=${recentSpikes.size};" +
+                "magnitude=${"%.2f".format(magnitude)};gated=$gateWarm"
+        )
 
         if (recentSpikes.size >= DebugConfig.TAP_COUNT_THRESHOLD) {
             if (isRhythmRegular(recentSpikes)) {
                 val count = recentSpikes.size
                 val magnitudes = recentMagnitudes.toList()
+                val gravitySnapshot = gravityAtClusterStart
                 recentSpikes.clear()
                 recentMagnitudes.clear()
                 referenceMagnitude = null
                 referencePulseSamples = null
-                onTapPatternDetected(count, magnitudes)
+                gravityAtClusterStart = null
+                onTapPatternDetected(count, magnitudes, gravitySnapshot)
             } else {
                 onLog("DEBUG", "tap_candidate_rejected_irregular")
                 recentSpikes.removeFirst()

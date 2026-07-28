@@ -119,7 +119,7 @@ class TapDetectorService : Service(), SensorEventListener {
             wornSensorAvailable = { wornSensorAvailable },
             sustainedMotionSuppressMs = DebugConfig.SUSTAINED_MOTION_SUPPRESS_MS,
             onLog = { tag, detail -> EventLog.log(this, tag, detail) },
-            onTapPatternDetected = { count, _ -> onTapPatternDetected(count) }
+            onTapPatternDetected = { count, _, _ -> onTapPatternDetected(count) }
         )
     }
 
@@ -197,6 +197,9 @@ class TapDetectorService : Service(), SensorEventListener {
         startForeground(NOTIFICATION_ID, buildNotification())
         detector.magnitudeThreshold = LocalStore.getPersonalTapThreshold(this)
             ?: DebugConfig.TAP_MAGNITUDE_THRESHOLD
+        // אותה סיבה שהסף נקרא מחדש בכל onStartCommand ולא רק ב-onCreate:
+        // שירות שכבר רץ בזיכרון צריך לקלוט כיול-תנוחה חדש מהשאלון.
+        detector.referenceGravity = LocalStore.getReferenceGravity(this)
         if (!isListening) {
             val sensor = accelerometer
             if (sensor != null) {
@@ -237,9 +240,12 @@ class TapDetectorService : Service(), SensorEventListener {
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {
             Sensor.TYPE_ACCELEROMETER -> {
-                val x = event.values[0]; val y = event.values[1]; val z = event.values[2]
-                val magnitude = Math.sqrt((x * x + y * y + z * z).toDouble())
-                detector.onSample(magnitude, System.currentTimeMillis())
+                // x,y,z מלאים, לא רק העוצמה: הכיוון הוא מה שמזין את
+                // שער-התנוחה, והוא מגיע כאן ממילא בכל מדגם.
+                detector.onSample(
+                    event.values[0], event.values[1], event.values[2],
+                    System.currentTimeMillis()
+                )
             }
             Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT -> {
                 wornState = (event.values.getOrNull(0) ?: 1f) >= 0.5f

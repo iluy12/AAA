@@ -400,16 +400,19 @@ class QuestionnaireActivity : Activity() {
 
         addTitle(container, "איך לדווח")
         container.addView(TextView(this).apply {
-            text = "בכל פעם שהתגברת על ניסיון — הקש 3 פעמים במרכז המסך, " +
-                "בנחרצות.\n\n" +
-                "לא בעדינות — הקשה רכה לא תיקלט."
+            text = "לפני שמתחילים — שים את השעון על היד.\n\n" +
+                "בכל פעם שהתגברת על ניסיון:\n" +
+                "הרם את היד כאילו אתה מסתכל על השעה, החזק אותה רגועה לרגע, " +
+                "ואז הקש 3 פעמים במרכז המסך.\n\n" +
+                "התנוחה היא שמאפשרת לשעון לזהות הקשה עדינה. עכשיו, בתרגול, " +
+                "הקש בנחרצות — כך נלמד את התנוחה שלך."
             textSize = 14f
             setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
             setPadding(0, 0, 0, 20)
         })
 
         val statusText = TextView(this).apply {
-            text = "לחץ 'התחל תרגול' והקש 3 פעמים במרכז המסך, בנחרצות"
+            text = "לחץ 'התחל תרגול', החזק את היד בתנוחה, והקש 3 פעמים במרכז המסך"
             textSize = 13f
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 16)
@@ -469,13 +472,23 @@ class QuestionnaireActivity : Activity() {
             skipButton.visibility = View.GONE
             statusText.text = "מקשיב… הקש עכשיו, בנחרצות"
             startPracticeListening(
-                onDetected = { calibrated, weakest ->
+                onDetected = { calibrated, weakest, gravityAtStart ->
                     LocalStore.setPersonalTapThreshold(this, calibrated)
                     EventLog.log(
                         this, "INFO",
                         "personal_tap_threshold_calibrated;value=${"%.2f".format(calibrated)};weakest_sample=${"%.2f".format(weakest)}"
                     )
-                    statusText.text = "✓ נקלט!"
+                    // תנוחת-פרק-היד ברגע שהצרור התחיל — זה מה שיאפשר
+                    // מכאן ואילך הקשות עדינות (שער-תנוחה ב-TapClusterDetector).
+                    if (gravityAtStart != null && gravityAtStart.size >= 3) {
+                        LocalStore.setReferenceGravity(this, gravityAtStart)
+                        EventLog.log(
+                            this, "INFO",
+                            "reference_gravity_calibrated;x=${"%.2f".format(gravityAtStart[0])};" +
+                                "y=${"%.2f".format(gravityAtStart[1])};z=${"%.2f".format(gravityAtStart[2])}"
+                        )
+                    }
+                    statusText.text = "✓ נקלט"
                     continueButton.visibility = View.VISIBLE
                 },
                 onTimeout = {
@@ -496,7 +509,10 @@ class QuestionnaireActivity : Activity() {
      * ברגע ש-TapClusterDetector מזהה צרור-הקשות תקין, גוזרים סף אישי
      * מהעוצמה-החלשה-ביותר שנקלטה (עם שוליים) ומדווחים חזרה ל-onDetected.
      */
-    private fun startPracticeListening(onDetected: (calibrated: Double, weakest: Double) -> Unit, onTimeout: () -> Unit) {
+    private fun startPracticeListening(
+        onDetected: (calibrated: Double, weakest: Double, gravityAtStart: FloatArray?) -> Unit,
+        onTimeout: () -> Unit
+    ) {
         val sm = (practiceSensorManager
             ?: (getSystemService(Context.SENSOR_SERVICE) as SensorManager).also { practiceSensorManager = it })
         val sensor = practiceAccelerometer ?: sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -518,14 +534,18 @@ class QuestionnaireActivity : Activity() {
 
         val detector = TapClusterDetector(
             magnitudeThreshold = DebugConfig.TAP_CALIBRATION_MAGNITUDE_FLOOR,
+            // referenceGravity נשאר null בכוונה: בתרגול אנחנו *לוכדים* את
+            // תנוחת-הייחוס, לא אוכפים אותה. אכיפה כאן הייתה יוצרת בעיה
+            // מעגלית — צריך שער כדי לכייל את השער.
+            referenceGravity = null,
             onLog = { tag, detail -> EventLog.log(this, tag, detail) },
-            onTapPatternDetected = { _, magnitudes ->
+            onTapPatternDetected = { _, magnitudes, gravityAtStart ->
                 val weakest = magnitudes.minOrNull() ?: DebugConfig.TAP_MAGNITUDE_THRESHOLD
                 val calibrated = (weakest * DebugConfig.TAP_CALIBRATION_MARGIN).coerceIn(
                     DebugConfig.TAP_CALIBRATION_MAGNITUDE_FLOOR, DebugConfig.TAP_MAGNITUDE_THRESHOLD
                 )
                 stopPracticeListening()
-                onDetected(calibrated, weakest)
+                onDetected(calibrated, weakest, gravityAtStart)
             }
         )
 
@@ -554,7 +574,7 @@ class QuestionnaireActivity : Activity() {
                     "עוצמה: ${"%.1f".format(magnitude)} · מקסימום: ${"%.1f".format(practiceMaxMagnitude)}\n" +
                         "מדגמים: $practiceSampleCount · מעל-סף-כיול: $practiceAboveFloorCount · עם-קפיצה: $practiceJerkCount"
 
-                detector.onSample(magnitude, now)
+                detector.onSample(x, y, z, now)
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) { /* not used */ }
         }

@@ -81,6 +81,33 @@ object LocalStore {
         prefs(context).edit().putFloat(KEY_PERSONAL_TAP_THRESHOLD, value.toFloat()).apply()
     }
 
+    /**
+     * וקטור-כובד-ייחוס אישי לשער-התנוחה: התנוחה שבה המשתמש מחזיק את
+     * פרק היד כשהוא מדווח. null = לא כויל עדיין, ואז השער כבוי לגמרי
+     * וזיהוי-ההקשה מתנהג כמו קודם (נפילה-חזרה בטוחה, לא שבורה).
+     *
+     * נשמר כשלושה floats נפרדים — SharedPreferences לא מחזיק מערכים,
+     * ואין טעם לגרור ספריית JSON בשביל שלושה מספרים.
+     */
+    fun getReferenceGravity(context: Context): FloatArray? {
+        val p = prefs(context)
+        if (!p.contains(KEY_REFERENCE_GRAVITY_X)) return null
+        return floatArrayOf(
+            p.getFloat(KEY_REFERENCE_GRAVITY_X, 0f),
+            p.getFloat(KEY_REFERENCE_GRAVITY_Y, 0f),
+            p.getFloat(KEY_REFERENCE_GRAVITY_Z, 0f)
+        )
+    }
+
+    fun setReferenceGravity(context: Context, gravity: FloatArray) {
+        if (gravity.size < 3) return
+        prefs(context).edit()
+            .putFloat(KEY_REFERENCE_GRAVITY_X, gravity[0])
+            .putFloat(KEY_REFERENCE_GRAVITY_Y, gravity[1])
+            .putFloat(KEY_REFERENCE_GRAVITY_Z, gravity[2])
+            .apply()
+    }
+
     // ---------- הקלטה אישית (שלב 9 בשאלון) ----------
 
     fun setRecordingPath(context: Context, path: String) {
@@ -107,4 +134,7 @@ object LocalStore {
     private const val KEY_COOLDOWN_UNTIL = "cooldown_until"
     private const val KEY_RECORDING_PATH = "recording_path"
     private const val KEY_PERSONAL_TAP_THRESHOLD = "personal_tap_threshold"
+    private const val KEY_REFERENCE_GRAVITY_X = "reference_gravity_x"
+    private const val KEY_REFERENCE_GRAVITY_Y = "reference_gravity_y"
+    private const val KEY_REFERENCE_GRAVITY_Z = "reference_gravity_z"
 }
