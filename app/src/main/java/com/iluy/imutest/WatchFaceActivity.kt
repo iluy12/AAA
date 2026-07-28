@@ -13,7 +13,6 @@ import android.os.Looper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
-import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -71,25 +70,26 @@ class WatchFaceActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        goFullscreen()
+        blendStatusBar()
         setContentView(buildLayout())
         updateClock()
     }
 
     /**
-     * מסך מלא בלי שורת-סטטוס. בלי זה נשאר פס אפור בראש המסך על רקע
-     * שחור — ועל מסך 2 אינץ' זה גם מכוער וגם גוזל שטח יקר. אנחנו ממילא
-     * מציירים שעון משלנו, אז אין מה לאבד.
+     * צובע את שורת-הסטטוס בשחור במקום להסתיר אותה.
+     *
+     * ⚠️ היה כאן FLAG_FULLSCREEN, וזו הייתה טעות חמורה: הסתרת השורה חוסמת
+     * גם את משיכת-ההתראות מלמעלה. יחד עם העובדה שמסך-בית מחליף את
+     * הלאנצ'ר של היצרן (ואיתו החלקה-שמאלה לתפריט), המשתמש נשאר נעול
+     * במסך אחד בלי גישה להגדרות ובלי יכולת להסיר את האפליקציה.
+     *
+     * צביעה בשחור פותרת את הפס האפור בלי לקחת שום יכולת מהמערכת.
      */
-    private fun goFullscreen() {
-        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+    private fun blendStatusBar() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             window.statusBarColor = Color.BLACK
             window.navigationBarColor = Color.BLACK
         }
-        @Suppress("DEPRECATION")
-        window.decorView.systemUiVisibility =
-            View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
     }
 
     private fun buildLayout(): View {
@@ -130,8 +130,37 @@ class WatchFaceActivity : Activity() {
         column.addView(feedbackText)
         root.addView(column)
 
+        // דרך-מוצא לתפריט. חובה, לא נוחות: מסך-בית מחליף את הלאנצ'ר של
+        // היצרן ואיתו כל דרכי-הניווט שלו, אז בלי זה אין גישה להגדרות,
+        // אין דרך להסיר את האפליקציה, והמכשיר בפועל נעול על מסך אחד.
+        // דיסקרטי בכוונה — מי שמסתכל רואה שעון.
+        val menuDot = TextView(this).apply {
+            text = "⋯"
+            textSize = 18f
+            setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+            gravity = Gravity.CENTER
+            setPadding(24, 8, 24, 8)
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
+            )
+            setOnClickListener { openMenu() }
+        }
+        root.addView(menuDot)
+
         root.setOnTouchListener { view, event -> handleTouch(view, event) }
+        // לחיצה ארוכה בכל מקום — דרך-מוצא שנייה, למקרה שהנקודה קטנה מדי
+        root.setOnLongClickListener {
+            openMenu()
+            true
+        }
         return root
+    }
+
+    private fun openMenu() {
+        EventLog.log(this, "INFO", "watch_face_menu_opened")
+        startActivity(Intent(this, MainActivity::class.java))
     }
 
     // ---------- מחוות ✕ ----------

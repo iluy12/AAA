@@ -174,11 +174,23 @@ class MainActivity : Activity() {
             setPadding(0, 24, 0, 0)
         })
 
-        if (isUs) return
+        // מוצג בשני המצבים. כשעילוי היא מסך-הבית זו דרך-החזרה היחידה —
+        // הלאנצ'ר של היצרן הוחלף, ואיתו כל דרכי-הניווט שלו.
+        container.addView(
+            secondaryButton(
+                if (isUs) "החזר את מסך הבית המקורי" else "הגדר את עילוי כמסך הבית"
+            ) { openHomeSettings() }
+        )
 
-        container.addView(secondaryButton("הגדר את עילוי כמסך הבית") {
-            openHomeSettings()
-        })
+        if (isUs) {
+            container.addView(TextView(this).apply {
+                text = "לביטול: בחר את מסך הבית המקורי ברשימה שתיפתח"
+                textSize = 10f
+                setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+                gravity = Gravity.CENTER
+                setPadding(0, 4, 0, 0)
+            })
+        }
     }
 
     private fun resolveCurrentHomePackage(): String? {
