@@ -235,6 +235,9 @@ class QuestionnaireActivity : Activity() {
         })
 
         addNextButton(container, label = "סיום השאלון") {
+            if (isRecording) {
+                stopRecording(recordButton, statusText)
+            }
             if (recordingFile.exists()) {
                 LocalStore.setRecordingPath(this, recordingFile.absolutePath)
             }
@@ -490,6 +493,15 @@ class QuestionnaireActivity : Activity() {
 
     override fun onDestroy() {
         stopPracticeListening()
+        // ליתר-ביטחון: אם יצאנו בדרך שלא עברה דרך stopRecording (למשל
+        // hardware-back באמצע הקלטה) — recorder עלול עדיין להיות במצב
+        // "מקליט", ו-release() ישיר על מצב כזה לא תקין. stop() קודם, גם
+        // אם הוא עצמו נכשל (למשל הקלטה קצרה מדי).
+        try {
+            recorder?.stop()
+        } catch (e: Exception) {
+            // ראו ההערה ב-stopRecording — אותו מצב, לא קריטי
+        }
         recorder?.release()
         player?.release()
         super.onDestroy()
