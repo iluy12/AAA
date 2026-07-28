@@ -2,10 +2,17 @@ package com.iluy.imutest
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -38,6 +45,13 @@ class QuestionnaireActivity : Activity() {
     private var isRecording = false
     private lateinit var recordingFile: File
     private var instructionShown = false
+
+    // --- תרגול-הקשה (סעיף 4) ---
+    private val practiceHandler = Handler(Looper.getMainLooper())
+    private var practiceSensorManager: SensorManager? = null
+    private var practiceAccelerometer: Sensor? = null
+    private var practiceListener: SensorEventListener? = null
+    private var practiceTimeoutRunnable: Runnable? = null
 
     companion object {
         private const val REQUEST_RECORD_AUDIO = 601
@@ -325,8 +339,14 @@ class QuestionnaireActivity : Activity() {
     /**
      * הוראת-הדפיקה החדשה: "דפוק כמו על דלת" — במקום ללמד קוד-לחיצות
      * שרירותי, מבקשים תנועה שכל אדם כבר יודע לבצע בטבעיות. זה גם נותן
-     * לאלגוריתם קצב-יעד ברור (TapDetectorService.TAP_MAX_INTERVAL_MS)
-     * במקום לנחש טווח כללי.
+     * לאלגוריתם קצב-יעד ברור (TAP_MAX_INTERVAL_MS) במקום לנחש טווח כללי.
+     *
+     * "התחל תרגול" מפעיל האזנה אמיתית ל-accelerometer, דרך אותו
+     * TapClusterDetector שמשמש את TapDetectorService — רק עם סף-רצפה נמוך
+     * (TAP_CALIBRATION_MAGNITUDE_FLOOR) במקום הסף הגלובלי, כדי לתפוס גם
+     * הקשות חלשות-יחסית ולכייל מהן סף אישי (סעיף 7: "כיול אישי לסף-
+     * ההקשה"). הסף הנגזר תמיד מהודק בין הרצפה לסף הגלובלי — כיול יכול רק
+     * להוסיף רגישות, לעולם לא לגרוע ממנה.
      */
     private fun renderKnockInstructionStep() {
         val scroll = ScrollView(this)
@@ -346,14 +366,130 @@ class QuestionnaireActivity : Activity() {
             setPadding(0, 0, 0, 20)
         })
 
-        addNextButton(container, label = "הבנתי, בוא נמשיך") {
-            renderRecordingStep()
+        val statusText = TextView(this).apply {
+            text = "לחץ 'התחל תרגול' ודפוק על השעון כמו בהוראה למעלה"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 16)
+        }
+        container.addView(statusText)
+
+        val startButton = Button(this).apply {
+            text = "התחל תרגול"
+        }
+        container.addView(startButton)
+
+        val skipButton = Button(this).apply {
+            text = "המשך בלי כיול אישי"
+            visibility = View.GONE
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = 12
+            layoutParams = lp
+            setOnClickListener {
+                stopPracticeListening()
+                EventLog.log(this@QuestionnaireActivity, "INFO", "tap_practice_skipped")
+                renderRecordingStep()
+            }
+        }
+        container.addView(skipButton)
+
+        val continueButton = Button(this).apply {
+            text = "המשך"
+            visibility = View.GONE
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = 12
+            layoutParams = lp
+            setOnClickListener { renderRecordingStep() }
+        }
+        container.addView(continueButton)
+
+        startButton.setOnClickListener {
+            startButton.visibility = View.GONE
+            skipButton.visibility = View.GONE
+            statusText.text = "מקשיב… דפוק עכשיו"
+            startPracticeListening(
+                onDetected = { thresholdUsed ->
+                    LocalStore.setPersonalTapThreshold(this, thresholdUsed)
+                    EventLog.log(
+                        this, "INFO",
+                        "tap_practice_calibrated;threshold=${"%.2f".format(thresholdUsed)}"
+                    )
+                    statusText.text = "✓ נקלט!"
+                    continueButton.visibility = View.VISIBLE
+                },
+                onTimeout = {
+                    EventLog.log(this, "INFO", "tap_practice_timeout")
+                    statusText.text = "לא זיהינו מספיק דפיקות. אפשר לנסות שוב."
+                    startButton.text = "נסה שוב"
+                    startButton.visibility = View.VISIBLE
+                    skipButton.visibility = View.VISIBLE
+                }
+            )
         }
 
         setContentView(scroll)
     }
 
+    /**
+     * מקשיב לחלון-זמן קצר (TAP_PRACTICE_TIMEOUT_MS) עם סף-כיול נמוך.
+     * ברגע ש-TapClusterDetector מזהה צרור-הקשות תקין, גוזרים סף אישי
+     * מהעוצמה-החלשה-ביותר שנקלטה (עם שוליים) ומדווחים חזרה ל-onDetected.
+     */
+    private fun startPracticeListening(onDetected: (Double) -> Unit, onTimeout: () -> Unit) {
+        val sm = (practiceSensorManager
+            ?: (getSystemService(Context.SENSOR_SERVICE) as SensorManager).also { practiceSensorManager = it })
+        val sensor = practiceAccelerometer ?: sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        practiceAccelerometer = sensor
+        if (sensor == null) {
+            onTimeout()
+            return
+        }
+
+        val detector = TapClusterDetector(
+            magnitudeThreshold = DebugConfig.TAP_CALIBRATION_MAGNITUDE_FLOOR,
+            onLog = { tag, detail -> EventLog.log(this, tag, detail) },
+            onTapPatternDetected = { _, magnitudes ->
+                val weakest = magnitudes.minOrNull() ?: DebugConfig.TAP_MAGNITUDE_THRESHOLD
+                val calibrated = (weakest * DebugConfig.TAP_CALIBRATION_MARGIN).coerceIn(
+                    DebugConfig.TAP_CALIBRATION_MAGNITUDE_FLOOR, DebugConfig.TAP_MAGNITUDE_THRESHOLD
+                )
+                stopPracticeListening()
+                onDetected(calibrated)
+            }
+        )
+
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                val x = event.values[0]; val y = event.values[1]; val z = event.values[2]
+                val magnitude = Math.sqrt((x * x + y * y + z * z).toDouble())
+                detector.onSample(magnitude, System.currentTimeMillis())
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) { /* not used */ }
+        }
+        practiceListener = listener
+        sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
+
+        val timeoutRunnable = Runnable {
+            stopPracticeListening()
+            onTimeout()
+        }
+        practiceTimeoutRunnable = timeoutRunnable
+        practiceHandler.postDelayed(timeoutRunnable, DebugConfig.TAP_PRACTICE_TIMEOUT_MS)
+    }
+
+    private fun stopPracticeListening() {
+        practiceTimeoutRunnable?.let { practiceHandler.removeCallbacks(it) }
+        practiceTimeoutRunnable = null
+        practiceListener?.let { practiceSensorManager?.unregisterListener(it) }
+        practiceListener = null
+    }
+
     override fun onDestroy() {
+        stopPracticeListening()
         recorder?.release()
         player?.release()
         super.onDestroy()

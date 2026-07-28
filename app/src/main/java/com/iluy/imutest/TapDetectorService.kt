@@ -22,23 +22,17 @@ import androidx.core.content.ContextCompat
  * הבסיס שהוכח עובד באפליקציית הבדיקה (testtap3 / ImuLoggerService), עכשיו
  * עם לוגיקת זיהוי-דפוס מלאה במקום רק תיעוד גולמי.
  *
- * שכבות ההגנה מפני false positives (עודכן אחרי סבבי בדיקה עצמית שגילו
- * גם פספוסים וגם התרעות-שווא — סף עוצמה בלבד לא הספיק):
- *  1. סף עוצמה (TAP_MAGNITUDE_THRESHOLD) — קפיצה חדה, לא תנודה עדינה.
- *  2. jerk (TAP_MIN_DELTA) — קפיצה פתאומית מהמדגם הקודם, לא רק גובה.
- *  3. refractory (TAP_REFRACTORY_MS) — הקשה חזקה אחת לא נספרת כמה פעמים.
- *  4. פולס-קצר (TAP_MAX_CONSECUTIVE_ABOVE_THRESHOLD_SAMPLES) — רעד ממושך
- *     (לא הקשה חדה) נדחה.
- *  5. תיחום-צרור (TAP_MAX_INTERVAL_MS) — קצב דפיקה-על-דלת טבעי; מרווח
- *     ארוך מדי מתחיל צרור חדש במקום להיספר כהמשך.
- *  6. סדירות-קצב (TAP_RHYTHM_MAX_STDDEV_MS) — קצב כמעט-קבוע בין דפיקות.
- *  7. דמיון-לדפיקה-ראשונה (TAP_SIMILARITY_*) — כל דפיקה בצרור חייבת
- *     להידמות בעוצמה ובמשך-פולס לדפיקה הראשונה שפתחה את הצרור. זו
- *     ההגנה החדשה ביותר: תנועה מקרית כמעט אף פעם לא עקבית מול עצמה.
+ * לוגיקת-הדפוס עצמה (שכבות 1–7 — עוצמה, jerk, refractory, פולס-קצר,
+ * תיחום-צרור, סדירות-קצב, דמיון-לדפיקה-ראשונה) חיה ב-TapClusterDetector,
+ * משותפת עם מסך התרגול בשאלון. השירות עצמו אחראי רק על שכבות שתלויות
+ * בחיישני-רקע/מצב-שירות:
  *  8. worn-gating (WORN_GATING_ENABLED) — אם יש חיישן off-body/דופק
  *     זמין, מתעלמים מדפיקות כשהשעון לא על היד. נופל בחזרה בבטחה אם אין
  *     חיישן/הרשאה.
  *  9. השתקת-תנועה-רציפה (סעיף 5 במסמך) — הליכה/נסיעה משתיקה זיהוי.
+ *
+ * הסף האישי המכויל בתרגול (LocalStore.getPersonalTapThreshold) משמש אם
+ * קיים, אחרת נופלים חזרה ל-DebugConfig.TAP_MAGNITUDE_THRESHOLD הגלובלי.
  *
  * זו עדיין לא הפרדה בין Sleep/Active/Moving לצורך חיישן פיזיולוגי (לא
  * רלוונטי ל-v1 — אין חיישן פיזיולוגי זמין עדיין, תלוי בתשובת ויקי).
@@ -54,23 +48,9 @@ class TapDetectorService : Service(), SensorEventListener {
     private var wornSensorAvailable = false
     private var wornState = true // אופטימי כברירת מחדל — לא חוסם אם אין נתון
 
-    // חותמות-זמן של דפיקות שכבר התקבלו לצרור הנוכחי
-    private val recentSpikes = ArrayDeque<Long>()
-
-    // "דוגמה" — הדפיקה הראשונה בכל צרור, כל דפיקה נוספת נבדקת מולה
-    private var referenceMagnitude: Double? = null
-    private var referencePulseSamples: Int? = null
-
-    // מעקב תנועה-רציפה (הליכה/נסיעה)
-    private var sustainedMotionStartMs: Long? = null
-    private var lastSpikeAboveThresholdMs: Long = 0L
-    private var suppressed = false
     private var isListening = false
 
-    // jerk ופולס-קצר
-    private var lastMagnitude: Double? = null
-    private var lastAcceptedSpikeMs: Long = 0L
-    private var consecutiveAboveThresholdSamples = 0
+    private lateinit var detector: TapClusterDetector
 
     companion object {
         const val CHANNEL_ID = "iluy_tap_service_channel"
@@ -95,6 +75,18 @@ class TapDetectorService : Service(), SensorEventListener {
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         setupWornGating()
+
+        val magnitudeThreshold = LocalStore.getPersonalTapThreshold(this)
+            ?: DebugConfig.TAP_MAGNITUDE_THRESHOLD
+        detector = TapClusterDetector(
+            magnitudeThreshold = magnitudeThreshold,
+            wornGatingEnabled = DebugConfig.WORN_GATING_ENABLED,
+            isWorn = { wornState },
+            wornSensorAvailable = { wornSensorAvailable },
+            sustainedMotionSuppressMs = DebugConfig.SUSTAINED_MOTION_SUPPRESS_MS,
+            onLog = { tag, detail -> EventLog.log(this, tag, detail) },
+            onTapPatternDetected = { count, _ -> onTapPatternDetected(count) }
+        )
     }
 
     private fun setupWornGating() {
@@ -154,7 +146,11 @@ class TapDetectorService : Service(), SensorEventListener {
 
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {
-            Sensor.TYPE_ACCELEROMETER -> handleAccelerometer(event)
+            Sensor.TYPE_ACCELEROMETER -> {
+                val x = event.values[0]; val y = event.values[1]; val z = event.values[2]
+                val magnitude = Math.sqrt((x * x + y * y + z * z).toDouble())
+                detector.onSample(magnitude, System.currentTimeMillis())
+            }
             Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT -> {
                 wornState = (event.values.getOrNull(0) ?: 1f) >= 0.5f
             }
@@ -163,127 +159,6 @@ class TapDetectorService : Service(), SensorEventListener {
                 wornState = hr > 0f
             }
         }
-    }
-
-    private fun handleAccelerometer(event: SensorEvent) {
-        val x = event.values[0]; val y = event.values[1]; val z = event.values[2]
-        val magnitude = Math.sqrt((x * x + y * y + z * z).toDouble())
-        val now = System.currentTimeMillis()
-
-        val prevMagnitude = lastMagnitude
-        lastMagnitude = magnitude
-
-        val aboveThreshold = magnitude > DebugConfig.TAP_MAGNITUDE_THRESHOLD
-        val jumpedSuddenly = prevMagnitude != null &&
-            Math.abs(magnitude - prevMagnitude) > DebugConfig.TAP_MIN_DELTA
-
-        if (aboveThreshold) {
-            consecutiveAboveThresholdSamples++
-            trackSustainedMotion(now)
-
-            val debounced = now - lastAcceptedSpikeMs < DebugConfig.TAP_REFRACTORY_MS
-            when {
-                suppressed -> { /* מושתק בגלל תנועה רציפה */ }
-                debounced -> EventLog.log(this, "DEBUG", "tap_candidate_rejected_refractory")
-                !jumpedSuddenly -> { /* אין קפיצה חדה — כנראה המשך אותו פולס, לא דפיקה חדשה */ }
-                else -> evaluateCandidate(now, magnitude, consecutiveAboveThresholdSamples)
-            }
-        } else {
-            consecutiveAboveThresholdSamples = 0
-            sustainedMotionStartMs = null
-            if (suppressed) {
-                suppressed = false
-                EventLog.log(this, "INFO", "tap_detection_resumed_after_stillness")
-            }
-        }
-    }
-
-    private fun trackSustainedMotion(now: Long) {
-        if (sustainedMotionStartMs == null || now - lastSpikeAboveThresholdMs > 1_500L) {
-            sustainedMotionStartMs = now
-        }
-        lastSpikeAboveThresholdMs = now
-
-        val sustainedFor = now - (sustainedMotionStartMs ?: now)
-        if (sustainedFor > DebugConfig.SUSTAINED_MOTION_SUPPRESS_MS && !suppressed) {
-            suppressed = true
-            EventLog.log(this, "INFO", "tap_detection_suppressed_sustained_motion")
-        }
-    }
-
-    private fun evaluateCandidate(now: Long, magnitude: Double, pulseSamples: Int) {
-        if (pulseSamples > DebugConfig.TAP_MAX_CONSECUTIVE_ABOVE_THRESHOLD_SAMPLES) {
-            EventLog.log(this, "DEBUG", "tap_candidate_rejected_sustained_pulse")
-            return
-        }
-
-        if (DebugConfig.WORN_GATING_ENABLED && wornSensorAvailable && !wornState) {
-            EventLog.log(this, "DEBUG", "tap_candidate_rejected_not_worn")
-            return
-        }
-
-        // תיחום-צרור: מרווח ארוך מדי מהדפיקה האחרונה = צרור חדש, לא המשך
-        if (recentSpikes.isNotEmpty() && now - recentSpikes.last() > DebugConfig.TAP_MAX_INTERVAL_MS) {
-            EventLog.log(this, "DEBUG", "tap_cluster_reset_interval_too_long")
-            recentSpikes.clear()
-            referenceMagnitude = null
-            referencePulseSamples = null
-        }
-
-        if (recentSpikes.isEmpty()) {
-            // דפיקה ראשונה בצרור — הופכת ל"דוגמה" לכל השאר
-            referenceMagnitude = magnitude
-            referencePulseSamples = pulseSamples
-            acceptIntoCluster(now)
-            return
-        }
-
-        val refMag = referenceMagnitude ?: magnitude
-        val refPulse = referencePulseSamples ?: pulseSamples
-        val magDiffRatio = if (refMag > 0) Math.abs(magnitude - refMag) / refMag else 0.0
-        val pulseDiff = Math.abs(pulseSamples - refPulse)
-
-        if (magDiffRatio > DebugConfig.TAP_SIMILARITY_MAGNITUDE_TOLERANCE ||
-            pulseDiff > DebugConfig.TAP_SIMILARITY_PULSE_TOLERANCE_SAMPLES
-        ) {
-            EventLog.log(
-                this, "DEBUG",
-                "tap_candidate_rejected_dissimilar_from_first;magDiff=${"%.2f".format(magDiffRatio)};pulseDiff=$pulseDiff"
-            )
-            return
-        }
-
-        acceptIntoCluster(now)
-    }
-
-    private fun acceptIntoCluster(now: Long) {
-        lastAcceptedSpikeMs = now
-        recentSpikes.addLast(now)
-        while (recentSpikes.isNotEmpty() && now - recentSpikes.first() > DebugConfig.TAP_WINDOW_MS) {
-            recentSpikes.removeFirst()
-        }
-
-        if (recentSpikes.size >= DebugConfig.TAP_COUNT_THRESHOLD) {
-            if (isRhythmRegular(recentSpikes)) {
-                val count = recentSpikes.size
-                recentSpikes.clear()
-                referenceMagnitude = null
-                referencePulseSamples = null
-                onTapPatternDetected(count)
-            } else {
-                EventLog.log(this, "DEBUG", "tap_candidate_rejected_irregular")
-                recentSpikes.removeFirst()
-            }
-        }
-    }
-
-    private fun isRhythmRegular(spikes: ArrayDeque<Long>): Boolean {
-        if (spikes.size < 3) return true
-        val gaps = spikes.zipWithNext { a: Long, b: Long -> (b - a).toDouble() }
-        val mean = gaps.average()
-        val variance = gaps.sumOf { (it - mean) * (it - mean) } / gaps.size
-        val stddev = Math.sqrt(variance)
-        return stddev <= DebugConfig.TAP_RHYTHM_MAX_STDDEV_MS
     }
 
     private fun onTapPatternDetected(spikeCount: Int) {

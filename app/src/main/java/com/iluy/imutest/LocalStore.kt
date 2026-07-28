@@ -69,6 +69,18 @@ object LocalStore {
         prefs(context).edit().putLong(KEY_COOLDOWN_UNTIL, epochMillis).apply()
     }
 
+    // ---------- כיול-אישי לסף-ההקשה (תרגול בשאלון) ----------
+
+    /** null = אין כיול-אישי עדיין, המערכת נופלת חזרה ל-DebugConfig.TAP_MAGNITUDE_THRESHOLD. */
+    fun getPersonalTapThreshold(context: Context): Double? {
+        if (!prefs(context).contains(KEY_PERSONAL_TAP_THRESHOLD)) return null
+        return prefs(context).getFloat(KEY_PERSONAL_TAP_THRESHOLD, 0f).toDouble()
+    }
+
+    fun setPersonalTapThreshold(context: Context, value: Double) {
+        prefs(context).edit().putFloat(KEY_PERSONAL_TAP_THRESHOLD, value.toFloat()).apply()
+    }
+
     // ---------- הקלטה אישית (שלב 9 בשאלון) ----------
 
     fun setRecordingPath(context: Context, path: String) {
@@ -94,4 +106,5 @@ object LocalStore {
     private const val KEY_TAP_STANDBY_UNTIL = "tap_standby_until"
     private const val KEY_COOLDOWN_UNTIL = "cooldown_until"
     private const val KEY_RECORDING_PATH = "recording_path"
+    private const val KEY_PERSONAL_TAP_THRESHOLD = "personal_tap_threshold"
 }
