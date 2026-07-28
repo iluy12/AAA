@@ -127,6 +127,24 @@ class TapClusterDetector(
         }
     }
 
+    /**
+     * שכבה 9 — השתקת-תנועה-רציפה (הליכה/נסיעה). נפרדת משער-התנוחה
+     * ומשלימה אותו: השער שואל "האם היד מוחזקת בכוונה", וזו שואלת "האם
+     * הגוף בתנועה ממושכת".
+     */
+    private fun trackSustainedMotion(now: Long) {
+        if (sustainedMotionStartMs == null || now - lastSpikeAboveThresholdMs > 1_500L) {
+            sustainedMotionStartMs = now
+        }
+        lastSpikeAboveThresholdMs = now
+
+        val sustainedFor = now - (sustainedMotionStartMs ?: now)
+        if (sustainedFor > sustainedMotionSuppressMs && !suppressed) {
+            suppressed = true
+            onLog("INFO", "tap_detection_suppressed_sustained_motion")
+        }
+    }
+
     /** סינון-נמוך: מפריד את הכובד (איטי) מתאוצה-לינארית (מהירה). */
     private fun updateGravity(x: Float, y: Float, z: Float) {
         if (!gravityInitialized) {
