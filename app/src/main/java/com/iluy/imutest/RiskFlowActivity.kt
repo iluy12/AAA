@@ -92,6 +92,14 @@ class RiskFlowActivity : Activity() {
         container.addView(bigButton("אני צריך עזרה") { onNeedsHelp("אני צריך עזרה") })
         container.addView(bigButton("אני צריך לדבר עכשיו", primary = true) { onNeedsToTalkNow() })
 
+        // כפתור-חזרה גלובלי (חלק 1.1 בסבב העיצוב-מחדש): לעולם לא לסמוך
+        // רק על הכפתור הפיזי/חומרה כדרך-יציאה יחידה. מכוון-בעיצוב שונה
+        // מ-5 הכפתורים למעלה (טקסט בלבד, בלי רקע) כדי שלא ייראה כאופציה
+        // שווה-משקל — זו יציאה, לא בחירה. מפעיל cooldown בדיוק כמו "הכל
+        // טוב" כדי שלא ליצור לולאת-הצפה אם השעון תוקע-לתוקע (הבעיה
+        // שהתגלתה בבדיקת-שטח: 4 מסכי RISK A רצופים בלי דרך לצאת).
+        container.addView(backButton { onDismissedWithoutChoice() })
+
         return scroll
     }
 
@@ -133,6 +141,18 @@ class RiskFlowActivity : Activity() {
         finish()
     }
 
+    /**
+     * חזרה בלי לבחור אף אפשרות. לא true/false-positive (זו לא טענה על
+     * דיוק-הזיהוי, רק "לא רוצה להתעסק עם זה עכשיו") — תג נפרד ב-לוג.
+     * כן מפעיל cooldown, מאותה סיבה שהכל-טוב מפעיל: למנוע פתיחה חוזרת
+     * מיידית מאותה תנועה/הקשה.
+     */
+    private fun onDismissedWithoutChoice() {
+        EventLog.log(this, "RISK_A_RESULT", "dismissed_without_choice;source=$source")
+        LocalStore.setCooldownUntil(this, System.currentTimeMillis() + DebugConfig.COOLDOWN_MS)
+        finish()
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int, permissions: Array<out String>, grantResults: IntArray
     ) {
@@ -153,6 +173,20 @@ class RiskFlowActivity : Activity() {
         lp.bottomMargin = 20
         layoutParams = lp
     }
+
+    private fun backButton(onClick: () -> Unit): Button =
+        Button(this).apply {
+            text = "חזרה"
+            setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            textSize = 13f
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = 24
+            layoutParams = lp
+            setOnClickListener { onClick() }
+        }
 
     private fun bigButton(label: String, primary: Boolean = false, onClick: () -> Unit): Button =
         Button(this).apply {

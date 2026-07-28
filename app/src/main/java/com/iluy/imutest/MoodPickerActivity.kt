@@ -7,6 +7,7 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.content.ContextCompat
 
 /**
  * כפתור "מצב-רוח" (סעיף 8-9 במסמך): לחיצה ישירה בתוך האפליקציה (לא גלוי
@@ -46,6 +47,21 @@ class MoodPickerActivity : Activity() {
                 setOnClickListener { onMoodSelected(mood) }
             })
         }
+
+        // כפתור-חזרה גלובלי (חלק 1.1): לא בחירת-מצב-רוח, רק יציאה —
+        // בלי cooldown (זה לא חלק ממנגנון-ההיכון של TapDetectorService).
+        container.addView(Button(this).apply {
+            text = "חזרה"
+            setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            textSize = 13f
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = 24
+            layoutParams = lp
+            setOnClickListener { finish() }
+        })
 
         setContentView(scroll)
     }
