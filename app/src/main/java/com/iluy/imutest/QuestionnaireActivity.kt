@@ -4,16 +4,11 @@ import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
@@ -51,20 +46,12 @@ class QuestionnaireActivity : Activity() {
     private var recordButtonRef: Button? = null
     private var statusTextRef: TextView? = null
 
-    // --- תרגול-הקשה (סעיף 4) ---
-    private val practiceHandler = Handler(Looper.getMainLooper())
-    private var practiceSensorManager: SensorManager? = null
-    private var practiceAccelerometer: Sensor? = null
-    private var practiceListener: SensorEventListener? = null
-    private var practiceTimeoutRunnable: Runnable? = null
+    // --- תרגול מחוות ✕ ---
 
-    // --- אבחון-תרגול ---
-    // מונים גולמיים לכל מדגם accelerometer, בלתי-תלויים בתוצאת הזיהוי —
-    // כדי שיהיה מה לקרוא בלוג גם כשהמחווה לא נקלטה בכלל.
-    private var practiceSampleCount = 0
-    private var practiceMaxMagnitude = 0.0
-    private var practiceDiagnosticTextRef: TextView? = null
-    private var practiceListenStartMs: Long = 0L
+    private var practiceDownX = 0f
+    private var practiceDownY = 0f
+    private var practiceLastStrokeDirection = 0
+    private var practiceLastStrokeMs = 0L
 
     companion object {
         private const val REQUEST_RECORD_AUDIO = 601
@@ -373,12 +360,11 @@ class QuestionnaireActivity : Activity() {
     }
 
     /**
-     * הוראת-המחווה: ניעור-יד נמרץ, כמו ניעור מים מהיד. החליף את ההקשה אחרי
-     * שארבעה סבבי-כיוונון בשטח לא התכנסו — ראו ReportGestureDetector להסבר המלא.
+     * הוראת-המחווה: ציור ✕ על מסך-השעון.
      *
-     * "התחל תרגול" מפעיל האזנה אמיתית ל-accelerometer דרך אותו
-     * ReportGestureDetector ואותם ספים שרצים ברקע. אין כאן גזירת-ערכים או כיול:
-     * התרגול נועד ללמד את המחווה ולאשר שהחומרה מגיבה.
+     * החליפה את כל הזיהוי מבוסס-התאוצה (הקשה, ואז ניעור) שנכשל בחמישה
+     * סבבים — ראו WatchFaceActivity להסבר המלא. מגע הוא נתון מדויק ולא
+     * אות רועש, ולכן התרגול כאן לא מכייל דבר: הוא רק מלמד את המחווה.
      */
     private fun renderKnockInstructionStep() {
         val scroll = ScrollView(this)
@@ -390,62 +376,22 @@ class QuestionnaireActivity : Activity() {
 
         addTitle(container, "איך לדווח")
         container.addView(TextView(this).apply {
-            text = "לפני שמתחילים — שים את השעון על היד.\n\n" +
-                "בכל פעם שהתגברת על ניסיון:\n" +
-                "נער את היד 3 פעמים הלוך-ושוב, ומיד אחר כך הקש פעמיים " +
-                "על השעון.\n\n" +
-                "שני השלבים ביחד — ניעור לבדו לא מספיק, כדי שניעור מים " +
-                "אחרי נטילת ידיים לא ייחשב בטעות כדיווח.\n\n" +
-                "תנועה נמרצת וברורה — כדי שהשעון לא יתבלבל עם הליכה " +
-                "או תנועה רגילה."
+            text = "בכל פעם שהתגברת על ניסיון:\n" +
+                "הדלק את המסך וצייר ✕ עליו — שני קווים אלכסוניים, " +
+                "בכל מקום על המסך.\n\n" +
+                "אין צורך לפתוח שום דבר. מי שמסתכל רואה שעון רגיל."
             textSize = 14f
             setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
             setPadding(0, 0, 0, 20)
         })
 
         val statusText = TextView(this).apply {
-            text = "לחץ 'התחל תרגול', נער את היד ואז הקש פעמיים"
+            text = "נסה עכשיו — צייר ✕ במסגרת שלמטה"
             textSize = 13f
             gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 16)
+            setPadding(0, 0, 0, 12)
         }
         container.addView(statusText)
-
-        // מצב-אבחון זמני (חלק 0): עוצמה חיה מה-accelerometer בזמן ההאזנה,
-        // כדי לראות בעיניים אילו ערכים החומרה הזו בפועל מייצרת, לפני כל
-        // כיוונון-ספים. יורד אוטומטית עם DEBUG_TAG_ENABLED=false.
-        if (DebugConfig.DEBUG_TAG_ENABLED) {
-            val diagnosticText = TextView(this).apply {
-                text = ""
-                textSize = 11f
-                setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
-                gravity = Gravity.CENTER
-                setPadding(0, 0, 0, 16)
-            }
-            container.addView(diagnosticText)
-            practiceDiagnosticTextRef = diagnosticText
-        }
-
-        val startButton = Button(this).apply {
-            text = "התחל תרגול"
-        }
-        container.addView(startButton)
-
-        val skipButton = Button(this).apply {
-            text = "המשך בלי תרגול"
-            visibility = View.GONE
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            lp.topMargin = 12
-            layoutParams = lp
-            setOnClickListener {
-                stopPracticeListening()
-                EventLog.log(this@QuestionnaireActivity, "INFO", "tap_practice_skipped")
-                renderRecordingStep()
-            }
-        }
-        container.addView(skipButton)
 
         val continueButton = Button(this).apply {
             text = "המשך"
@@ -457,134 +403,88 @@ class QuestionnaireActivity : Activity() {
             layoutParams = lp
             setOnClickListener { renderRecordingStep() }
         }
-        container.addView(continueButton)
 
-        startButton.setOnClickListener {
-            startButton.visibility = View.GONE
-            skipButton.visibility = View.GONE
-            statusText.text = "מקשיב… נער את היד, ואז הקש פעמיים"
-            startPracticeListening(
-                onDetected = { reversals, peak ->
-                    // אין מה לשמור: הניעור לא דורש כיול אישי. התרגול כאן
-                    // נועד ללמד את המחווה ולאשר שהחומרה מגיבה, לא לגזור ערך.
-                    EventLog.log(
-                        this, "INFO",
-                        "shake_practice_success;reversals=$reversals;peak=${"%.1f".format(peak)}"
-                    )
-                    statusText.text = "✓ נקלט"
-                    continueButton.visibility = View.VISIBLE
-                },
-                onTimeout = {
-                    EventLog.log(this, "INFO", "shake_practice_timeout")
-                    statusText.text = "המחווה לא הושלמה. נסה שוב — ניעור ואז שתי נקישות."
-                    startButton.text = "נסה שוב"
-                    startButton.visibility = View.VISIBLE
-                    skipButton.visibility = View.VISIBLE
-                }
+        // משטח-תרגול עם אותה לוגיקת-זיהוי בדיוק שרצה על מסך-השעון
+        val practicePad = TextView(this).apply {
+            text = "צייר כאן ✕"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+            setBackgroundColor(ContextCompat.getColor(context, R.color.bg_grey))
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 260
             )
+            layoutParams = lp
         }
+        practicePad.setOnTouchListener { view, event ->
+            handlePracticeTouch(view, event) {
+                EventLog.log(this, "INFO", "x_gesture_practice_success")
+                statusText.text = "✓ נקלט"
+                practicePad.text = "✓"
+                continueButton.visibility = View.VISIBLE
+            }
+        }
+        container.addView(practicePad)
+
+        container.addView(Button(this).apply {
+            text = "המשך בלי תרגול"
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = 12
+            layoutParams = lp
+            setOnClickListener {
+                EventLog.log(this@QuestionnaireActivity, "INFO", "x_gesture_practice_skipped")
+                renderRecordingStep()
+            }
+        })
+        container.addView(continueButton)
 
         setContentView(scroll)
     }
 
     /**
-     * מקשיב לחלון-זמן קצר (TAP_PRACTICE_TIMEOUT_MS) עם אותו ReportGestureDetector
-     * ואותם ספים בדיוק שרצים ברקע — התרגול חייב לשקף את המציאות, אחרת
-     * הוא מאשר משהו שלא יעבוד אחר-כך. אין כאן גזירת-ערכים: הניעור לא
-     * דורש כיול אישי.
+     * זיהוי ✕ לתרגול — אותם כללים בדיוק כמו ב-WatchFaceActivity: שני
+     * קווים אלכסוניים בכיוונים מנוגדים בתוך חלון-זמן. התרגול חייב לשקף
+     * את המציאות, אחרת הוא מאשר משהו שלא יעבוד אחר-כך.
      */
-    private fun startPracticeListening(
-        onDetected: (reversals: Int, peak: Double) -> Unit,
-        onTimeout: () -> Unit
-    ) {
-        val sm = (practiceSensorManager
-            ?: (getSystemService(Context.SENSOR_SERVICE) as SensorManager).also { practiceSensorManager = it })
-        val sensor = practiceAccelerometer ?: sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        practiceAccelerometer = sensor
-        if (sensor == null) {
-            EventLog.log(this, "ERROR", "no_accelerometer_sensor_found_practice")
-            onTimeout()
-            return
-        }
-
-        // איפוס המונים לתחילת ניסיון-האזנה חדש (כולל "נסה שוב")
-        practiceSampleCount = 0
-        practiceMaxMagnitude = 0.0
-        practiceListenStartMs = System.currentTimeMillis()
-        practiceDiagnosticTextRef?.text = "החלפות-כיוון: 0 · שיא: —"
-
-        val detector = ReportGestureDetector(
-            onLog = { tag, detail -> EventLog.log(this, tag, detail) },
-            onGestureCompleted = { reversals, peak ->
-                stopPracticeListening()
-                onDetected(reversals, peak)
+    private fun handlePracticeTouch(view: View, event: MotionEvent, onXDrawn: () -> Unit): Boolean {
+        when (event.action) {
+            MotionEvent.ACTION_DOWN -> {
+                practiceDownX = event.x
+                practiceDownY = event.y
             }
-        )
+            MotionEvent.ACTION_UP -> {
+                val dx = event.x - practiceDownX
+                val dy = event.y - practiceDownY
+                val length = Math.hypot(dx.toDouble(), dy.toDouble())
 
-        val listener = object : SensorEventListener {
-            override fun onSensorChanged(event: SensorEvent) {
-                val x = event.values[0]; val y = event.values[1]; val z = event.values[2]
-                val magnitude = Math.sqrt((x * x + y * y + z * z).toDouble())
+                val minSide = Math.min(view.width, view.height)
+                if (length < minSide * DebugConfig.X_GESTURE_MIN_STROKE_FRACTION) return true
+
+                val shorterAxis = Math.min(Math.abs(dx), Math.abs(dy))
+                if (shorterAxis < length * DebugConfig.X_GESTURE_MIN_DIAGONAL_RATIO) return true
+
+                val direction = if (dx * dy > 0) 1 else -1
                 val now = System.currentTimeMillis()
+                val isSecondStroke = practiceLastStrokeDirection != 0 &&
+                    direction != practiceLastStrokeDirection &&
+                    now - practiceLastStrokeMs <= DebugConfig.X_GESTURE_MAX_INTERVAL_MS
 
-                practiceSampleCount++
-                if (magnitude > practiceMaxMagnitude) practiceMaxMagnitude = magnitude
-
-                detector.onSample(x, y, z, now)
-
-                // משוב חי על מה שבאמת קובע — מספר החלפות-הכיוון מול הדרוש.
-                // מאפשר למשתמש לראות שהוא "מתקרב" במקום לנחש.
-                practiceDiagnosticTextRef?.text =
-                    if (detector.isArmed()) {
-                        "✓ ניעור נקלט — עכשיו הקש\n" +
-                            "נקישות: ${detector.currentTaps()}/${DebugConfig.GESTURE_TAP_COUNT}"
-                    } else {
-                        "שלב 1 — ניעור\n" +
-                            "החלפות-כיוון: ${detector.currentReversals()}/${DebugConfig.SHAKE_MIN_REVERSALS} · " +
-                            "שיא: ${"%.0f".format(practiceMaxMagnitude)}/${"%.0f".format(DebugConfig.SHAKE_MIN_PEAK)}"
-                    }
+                if (isSecondStroke) {
+                    practiceLastStrokeDirection = 0
+                    practiceLastStrokeMs = 0L
+                    onXDrawn()
+                } else {
+                    practiceLastStrokeDirection = direction
+                    practiceLastStrokeMs = now
+                }
             }
-            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) { /* not used */ }
         }
-        practiceListener = listener
-        // SENSOR_DELAY_FASTEST — אותה סיבה כמו ב-TapDetectorService, וגם
-        // כדי שהתרגול ידגום באותו קצב בדיוק כמו הזיהוי האמיתי ברקע.
-        val registered = sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_FASTEST)
-        EventLog.log(
-            this, if (registered) "INFO" else "ERROR",
-            "practice_sensor_registered;success=$registered"
-        )
-
-        val timeoutRunnable = Runnable {
-            stopPracticeListening()
-            onTimeout()
-        }
-        practiceTimeoutRunnable = timeoutRunnable
-        practiceHandler.postDelayed(timeoutRunnable, DebugConfig.TAP_PRACTICE_TIMEOUT_MS)
-    }
-
-    private fun stopPracticeListening() {
-        practiceTimeoutRunnable?.let { practiceHandler.removeCallbacks(it) }
-        practiceTimeoutRunnable = null
-        if (practiceListener != null) {
-            // שורת-סיכום אחת לכל ניסיון-האזנה שהסתיים בפועל (הצלחה או
-            // timeout) — לא ל-skip/onDestroy שקוראים לפונקציה הזו כשאין
-            // ניסיון פעיל, כדי לא לרשום סיכום-ריק כפול.
-            val elapsedMs = System.currentTimeMillis() - practiceListenStartMs
-            val hzActual = if (elapsedMs > 0) practiceSampleCount / (elapsedMs / 1000.0) else 0.0
-            EventLog.log(
-                this, "INFO",
-                "shake_practice_summary;samples=$practiceSampleCount;" +
-                    "max_magnitude=${"%.2f".format(practiceMaxMagnitude)};" +
-                    "elapsed_ms=$elapsedMs;hz_actual=${"%.1f".format(hzActual)}"
-            )
-        }
-        practiceListener?.let { practiceSensorManager?.unregisterListener(it) }
-        practiceListener = null
+        return true
     }
 
     override fun onDestroy() {
-        stopPracticeListening()
         // ליתר-ביטחון: אם יצאנו בדרך שלא עברה דרך stopRecording (למשל
         // hardware-back באמצע הקלטה) — recorder עלול עדיין להיות במצב
         // "מקליט", ו-release() ישיר על מצב כזה לא תקין. stop() קודם, גם

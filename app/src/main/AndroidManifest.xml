@@ -32,6 +32,24 @@
             </intent-filter>
         </activity>
 
+        <!-- מסך-השעון: מוצע כאפליקציית מסך-בית, כדי שלחיצה על הכפתור
+             הצדדי תציג אותו ישירות בלי לפתוח שום דבר. המשתמש בוחר אותו
+             ב־הגדרות ← אפליקציות ← ברירות מחדל ← מסך בית.
+             stateAlwaysHidden: לא לפתוח מקלדת אף פעם על מסך 2 אינץ'. -->
+        <activity
+            android:name=".WatchFaceActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:launchMode="singleTask"
+            android:stateNotNeeded="true"
+            android:windowSoftInputMode="stateAlwaysHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <activity
             android:name=".QuestionnaireActivity"
             android:exported="false"

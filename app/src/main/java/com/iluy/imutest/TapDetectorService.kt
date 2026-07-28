@@ -19,30 +19,27 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 
 /**
- * שירות שרץ ברקע תמיד (כולל מסך כבוי) ומזהה את מחוות-הדיווח.
+ * שירות-רקע. **כבר לא מזהה את מחוות-הדיווח** — היא עברה למגע על
+ * מסך-השעון (WatchFaceActivity).
  *
- * המחווה היא **ניעור ואז שתי נקישות**. ההקשה נזנחה אחרי ארבעה סבבי-כיוונון
- * בשטח שלא התכנסו: ב-25Hz (תקרת-החומרה) הקשה נמשכת 1-2 מדגמים, והעוצמה
- * שלה (15-17) יושבת בתוך טווח ההליכה (12-20) — אין סף שמפריד ביניהן.
- * הניעור נבדל בתדירות, ממד שבו אין חפיפה. ראו ReportGestureDetector.
+ * חמישה סבבים של זיהוי מבוסס-תאוצה נכשלו, ולא בגלל כיוונון: ב-25Hz
+ * (תקרת-החומרה) הקשה טבעית (15-17) והליכה (12-20) חופפות בנתונים עצמם,
+ * וניעור מתנגש עם ניעור-מים אחרי נטילת ידיים. ה-accelerometer כבר לא
+ * נרשם כאן — גם כדי לחסוך סוללה וגם כדי שלא ימשיך לייצר את אותן
+ * התרעות-שווא.
  *
- * לוגיקת-הזיהוי עצמה חיה ב-ReportGestureDetector (Kotlin טהור, בלי תלות
- * ב-Context). השירות אחראי רק על מה שתלוי בחיישני-רקע ובמצב-שירות:
- *  - worn-gating (WORN_GATING_ENABLED) — אם יש חיישן off-body/דופק זמין,
- *    מתעלמים מהמחווה כשהשעון לא על היד. נופל בחזרה בבטחה אם אין
- *    חיישן/הרשאה.
- *  - היכון שעתי ו-cooldown (LocalStore) — הסלמה בניעור שני באותה שעה.
+ * מה שנשאר באחריות השירות:
+ *  - worn-gating — מצב "על היד", לשימוש עתידי
+ *  - אבחון-דופק (מאחורי DEBUG_TAG_ENABLED) — לבירור האם TYPE_HEART_RATE
+ *    מדווח ברקע ברציפות, מה שיקבע אם סעיף 6 (זיהוי מוקדם) ישים בכלל
+ *  - אינוונטר-חיישנים חד-פעמי
  *
- * אין כאן כיול-אישי: תדירות-ניעור אינה תלוית-אדם כמו עוצמת-הקשה, ולכן
- * נמחקו הסף האישי ותנוחת-הייחוס שהיו נדרשים למסלול ההקשה.
- *
- * זו עדיין לא הפרדה בין Sleep/Active/Moving לצורך חיישן פיזיולוגי (לא
- * רלוונטי ל-v1 — אין חיישן פיזיולוגי זמין עדיין, תלוי בתשובת ויקי).
+ * לוגיקת ההסלמה (היכון שעתי, cooldown) חיה ב-OvercomingReporter, משותפת
+ * עם מסך-השעון.
  */
 class TapDetectorService : Service(), SensorEventListener {
 
     private lateinit var sensorManager: SensorManager
-    private var accelerometer: Sensor? = null
 
     // --- worn-gating ---
     private var offBodySensor: Sensor? = null
@@ -52,7 +49,6 @@ class TapDetectorService : Service(), SensorEventListener {
 
     private var isListening = false
 
-    private lateinit var detector: ReportGestureDetector
 
     // --- אבחון-דופק (בדיקה אמפירית: TYPE_HEART_RATE מדווח ברקע באופן
     // רציף על החומרה הזו, או רק על-דרישה? תלוי-חומרה, לא ידוע מראש —
@@ -107,14 +103,8 @@ class TapDetectorService : Service(), SensorEventListener {
     override fun onCreate() {
         super.onCreate()
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         logAvailableSensors()
         setupWornGating()
-
-        detector = ReportGestureDetector(
-            onLog = { tag, detail -> EventLog.log(this, tag, detail) },
-            onGestureCompleted = { reversals, peak -> onReportGestureDetected(reversals, peak) }
-        )
     }
 
     /**
@@ -190,25 +180,17 @@ class TapDetectorService : Service(), SensorEventListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, buildNotification())
         if (!isListening) {
-            val sensor = accelerometer
-            if (sensor != null) {
-                // חזרה ל-GAME: נמדד בפועל (hz_actual בלוג התרגול) שהחיישן
-                // מספק ~25Hz בכל מקרה, בין אם מבקשים FASTEST ובין אם GAME —
-                // זו תקרת-חומרה, לא מגבלת-הדגל. FASTEST לא מוסיף רזולוציה,
-                // רק עלות-סוללה מיותרת בשירות-רקע תמידי. נשאר FASTEST רק
-                // בחלון-התרגול הקצר (QuestionnaireActivity), ששם העלות זניחה.
-                sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
-                offBodySensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
-                heartRateSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
-                if (DebugConfig.DEBUG_TAG_ENABLED && heartRateSensor != null && !hrDiagnosticStarted) {
-                    hrDiagnosticStarted = true
-                    hrDiagnosticHandler.postDelayed(hrDiagnosticSummaryRunnable, 60_000L)
-                }
-                isListening = true
-                EventLog.log(this, "INFO", "tap_service_started")
-            } else {
-                EventLog.log(this, "ERROR", "no_accelerometer_sensor_found")
+            // ה-accelerometer כבר לא נרשם כאן: הדיווח עבר למחוות ✕ על
+            // מסך-השעון, ולהשאיר גלאי-תנועה פעיל היה גם מבזבז סוללה
+            // וגם ממשיך לייצר את אותן התרעות-שווא שבגללן ויתרנו עליו.
+            offBodySensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
+            heartRateSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
+            if (DebugConfig.DEBUG_TAG_ENABLED && heartRateSensor != null && !hrDiagnosticStarted) {
+                hrDiagnosticStarted = true
+                hrDiagnosticHandler.postDelayed(hrDiagnosticSummaryRunnable, 60_000L)
             }
+            isListening = true
+            EventLog.log(this, "INFO", "tap_service_started")
         }
         return START_STICKY
     }
@@ -228,14 +210,6 @@ class TapDetectorService : Service(), SensorEventListener {
 
     override fun onSensorChanged(event: SensorEvent) {
         when (event.sensor.type) {
-            Sensor.TYPE_ACCELEROMETER -> {
-                // x,y,z מלאים, לא רק העוצמה: הכיוון הוא מה שמזין את
-                // שער-התנוחה, והוא מגיע כאן ממילא בכל מדגם.
-                detector.onSample(
-                    event.values[0], event.values[1], event.values[2],
-                    System.currentTimeMillis()
-                )
-            }
             Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT -> {
                 wornState = (event.values.getOrNull(0) ?: 1f) >= 0.5f
             }
@@ -255,41 +229,6 @@ class TapDetectorService : Service(), SensorEventListener {
                     hrLastSampleMs = now
                 }
             }
-        }
-    }
-
-    private fun onReportGestureDetected(reversals: Int, peak: Double) {
-        val now = System.currentTimeMillis()
-
-        // worn-gating: היה בתוך TapClusterDetector שנמחק, ולכן הועבר לכאן.
-        // ReportGestureDetector נשאר Kotlin טהור בלי תלות בחיישני-רקע.
-        if (DebugConfig.WORN_GATING_ENABLED && wornSensorAvailable && !wornState) {
-            EventLog.log(this, "DEBUG", "shake_ignored_not_worn")
-            return
-        }
-
-        if (now < LocalStore.getCooldownUntil(this)) {
-            EventLog.log(this, "INFO", "tap_ignored_cooldown_active")
-            return
-        }
-
-        val debugDetail = "ניעור ($reversals החלפות, שיא ${"%.0f".format(peak)})"
-        val standbyUntil = LocalStore.getTapStandbyUntil(this)
-
-        if (now < standbyUntil) {
-            EventLog.log(this, "TRIGGER", "tap_second_in_hour;$debugDetail")
-            RiskFlowActivity.launch(
-                this,
-                source = debugDetail,
-                variant = RiskFlowActivity.VARIANT_SECOND_TAP_IN_HOUR
-            )
-        } else {
-            LocalStore.setTapStandbyUntil(this, now + DebugConfig.STANDBY_DURATION_MS)
-            EventLog.log(this, "TRIGGER", "tap_first_in_hour;$debugDetail")
-            // חלק 3.1 (הועלה-בעדיפות): ההקשה היא אירוע חיובי, לא צריכה
-            // מסך-בחירה. מחליף את ה-notification+VideoPlaceholderActivity
-            // הישנים באישור-קל שמדליק מסך+צליל ונסגר לבד, בלי כפתורים.
-            TapAcknowledgedActivity.launch(this, source = debugDetail)
         }
     }
 
