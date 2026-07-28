@@ -159,11 +159,12 @@ class TapDetectorService : Service(), SensorEventListener {
         if (!isListening) {
             val sensor = accelerometer
             if (sensor != null) {
-                // SENSOR_DELAY_FASTEST, לא GAME (~20ms/50Hz): הקשה על מסגרת
-                // קשיחה היא פולס-הלם קצר-מאוד — ב-50Hz יש סיכוי אמיתי
-                // לדגום בין הפסגה לפסגה ולפספס את העוצמה האמיתית, לא רק
-                // לתפוס אותה נמוכה מדי.
-                sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST)
+                // חזרה ל-GAME: נמדד בפועל (hz_actual בלוג התרגול) שהחיישן
+                // מספק ~25Hz בכל מקרה, בין אם מבקשים FASTEST ובין אם GAME —
+                // זו תקרת-חומרה, לא מגבלת-הדגל. FASTEST לא מוסיף רזולוציה,
+                // רק עלות-סוללה מיותרת בשירות-רקע תמידי. נשאר FASTEST רק
+                // בחלון-התרגול הקצר (QuestionnaireActivity), ששם העלות זניחה.
+                sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
                 offBodySensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
                 heartRateSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
                 if (DebugConfig.DEBUG_TAG_ENABLED && heartRateSensor != null && !hrDiagnosticStarted) {
