@@ -108,6 +108,8 @@ class MainActivity : Activity() {
             RiskFlowActivity.launch(this, source = "כפתור 'נפלתי'")
         })
 
+        addHomeAppSection(container)
+
         if (DebugConfig.DEBUG_TAG_ENABLED) {
             container.addView(TextView(this).apply {
                 text = "מצב בדיקה (v1)"
@@ -144,6 +146,67 @@ class MainActivity : Activity() {
         })
 
         setContentView(scroll)
+    }
+
+    /**
+     * הגדרת עילוי כמסך-הבית.
+     *
+     * במכשירים זולים היצרן לעיתים עורך את ההגדרות ומשמיט את הפריט
+     * "מסך בית", אבל אנדרואיד עדיין מחזיק את המסך עצמו — רק בלי קיצור
+     * אליו. ACTION_HOME_SETTINGS קופץ ישירות לשם.
+     *
+     * מוצג גם מי מוגדר כרגע, כדי שיהיה אפשר לוודא שההגדרה נתפסה בלי
+     * לנחש לפי התנהגות הכפתור הצדדי.
+     */
+    private fun addHomeAppSection(container: LinearLayout) {
+        val currentHome = resolveCurrentHomePackage()
+        val isUs = currentHome == packageName
+
+        container.addView(TextView(this).apply {
+            text = if (isUs) {
+                "מסך הבית: עילוי ✓"
+            } else {
+                "מסך הבית כרגע: ${currentHome ?: "לא ידוע"}"
+            }
+            textSize = 11f
+            setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+            gravity = Gravity.CENTER
+            setPadding(0, 24, 0, 0)
+        })
+
+        if (isUs) return
+
+        container.addView(secondaryButton("הגדר את עילוי כמסך הבית") {
+            openHomeSettings()
+        })
+    }
+
+    private fun resolveCurrentHomePackage(): String? {
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val resolved = packageManager.resolveActivity(
+            intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY
+        )
+        return resolved?.activityInfo?.packageName
+    }
+
+    private fun openHomeSettings() {
+        // נפילה-חזרה מדורגת: המסך הייעודי, ואם היצרן הסיר אותו — ההגדרות
+        // הכלליות, שתמיד קיימות.
+        val candidates = listOf(
+            Intent(android.provider.Settings.ACTION_HOME_SETTINGS),
+            Intent(android.provider.Settings.ACTION_SETTINGS)
+        )
+        for (intent in candidates) {
+            try {
+                startActivity(intent)
+                EventLog.log(this, "INFO", "home_settings_opened;action=${intent.action}")
+                return
+            } catch (e: Exception) {
+                // ננסה את הבא בתור
+            }
+        }
+        EventLog.log(this, "ERROR", "home_settings_unavailable")
+        Toast.makeText(this, "לא הצלחתי לפתוח את ההגדרות", Toast.LENGTH_LONG).show()
     }
 
     private fun toggleLogDisplay() {
