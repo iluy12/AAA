@@ -555,7 +555,9 @@ class QuestionnaireActivity : Activity() {
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) { /* not used */ }
         }
         practiceListener = listener
-        val registered = sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
+        // SENSOR_DELAY_FASTEST — אותה סיבה כמו ב-TapDetectorService, וגם
+        // כדי שהתרגול ידגום באותו קצב בדיוק כמו הזיהוי האמיתי ברקע.
+        val registered = sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_FASTEST)
         EventLog.log(
             this, if (registered) "INFO" else "ERROR",
             "practice_sensor_registered;success=$registered"

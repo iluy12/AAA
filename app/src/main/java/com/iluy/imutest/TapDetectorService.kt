@@ -125,7 +125,11 @@ class TapDetectorService : Service(), SensorEventListener {
         if (!isListening) {
             val sensor = accelerometer
             if (sensor != null) {
-                sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_GAME)
+                // SENSOR_DELAY_FASTEST, לא GAME (~20ms/50Hz): הקשה על מסגרת
+                // קשיחה היא פולס-הלם קצר-מאוד — ב-50Hz יש סיכוי אמיתי
+                // לדגום בין הפסגה לפסגה ולפספס את העוצמה האמיתית, לא רק
+                // לתפוס אותה נמוכה מדי.
+                sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST)
                 offBodySensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
                 heartRateSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
                 isListening = true
