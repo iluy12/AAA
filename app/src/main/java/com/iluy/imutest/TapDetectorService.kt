@@ -21,12 +21,12 @@ import androidx.core.content.ContextCompat
 /**
  * שירות שרץ ברקע תמיד (כולל מסך כבוי) ומזהה את מחוות-הדיווח.
  *
- * המחווה היא **ניעור-יד**, לא הקשה. ההקשה נזנחה אחרי ארבעה סבבי-כיוונון
+ * המחווה היא **ניעור ואז שתי נקישות**. ההקשה נזנחה אחרי ארבעה סבבי-כיוונון
  * בשטח שלא התכנסו: ב-25Hz (תקרת-החומרה) הקשה נמשכת 1-2 מדגמים, והעוצמה
  * שלה (15-17) יושבת בתוך טווח ההליכה (12-20) — אין סף שמפריד ביניהן.
- * הניעור נבדל בתדירות, ממד שבו אין חפיפה. ראו ShakeDetector.
+ * הניעור נבדל בתדירות, ממד שבו אין חפיפה. ראו ReportGestureDetector.
  *
- * לוגיקת-הזיהוי עצמה חיה ב-ShakeDetector (Kotlin טהור, בלי תלות
+ * לוגיקת-הזיהוי עצמה חיה ב-ReportGestureDetector (Kotlin טהור, בלי תלות
  * ב-Context). השירות אחראי רק על מה שתלוי בחיישני-רקע ובמצב-שירות:
  *  - worn-gating (WORN_GATING_ENABLED) — אם יש חיישן off-body/דופק זמין,
  *    מתעלמים מהמחווה כשהשעון לא על היד. נופל בחזרה בבטחה אם אין
@@ -52,7 +52,7 @@ class TapDetectorService : Service(), SensorEventListener {
 
     private var isListening = false
 
-    private lateinit var detector: ShakeDetector
+    private lateinit var detector: ReportGestureDetector
 
     // --- אבחון-דופק (בדיקה אמפירית: TYPE_HEART_RATE מדווח ברקע באופן
     // רציף על החומרה הזו, או רק על-דרישה? תלוי-חומרה, לא ידוע מראש —
@@ -111,9 +111,9 @@ class TapDetectorService : Service(), SensorEventListener {
         logAvailableSensors()
         setupWornGating()
 
-        detector = ShakeDetector(
+        detector = ReportGestureDetector(
             onLog = { tag, detail -> EventLog.log(this, tag, detail) },
-            onShakeDetected = { reversals, peak -> onReportGestureDetected(reversals, peak) }
+            onGestureCompleted = { reversals, peak -> onReportGestureDetected(reversals, peak) }
         )
     }
 
@@ -262,7 +262,7 @@ class TapDetectorService : Service(), SensorEventListener {
         val now = System.currentTimeMillis()
 
         // worn-gating: היה בתוך TapClusterDetector שנמחק, ולכן הועבר לכאן.
-        // ShakeDetector נשאר Kotlin טהור בלי תלות בחיישני-רקע.
+        // ReportGestureDetector נשאר Kotlin טהור בלי תלות בחיישני-רקע.
         if (DebugConfig.WORN_GATING_ENABLED && wornSensorAvailable && !wornState) {
             EventLog.log(this, "DEBUG", "shake_ignored_not_worn")
             return

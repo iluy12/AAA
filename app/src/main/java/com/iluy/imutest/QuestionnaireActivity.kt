@@ -374,10 +374,10 @@ class QuestionnaireActivity : Activity() {
 
     /**
      * הוראת-המחווה: ניעור-יד נמרץ, כמו ניעור מים מהיד. החליף את ההקשה אחרי
-     * שארבעה סבבי-כיוונון בשטח לא התכנסו — ראו ShakeDetector להסבר המלא.
+     * שארבעה סבבי-כיוונון בשטח לא התכנסו — ראו ReportGestureDetector להסבר המלא.
      *
      * "התחל תרגול" מפעיל האזנה אמיתית ל-accelerometer דרך אותו
-     * ShakeDetector ואותם ספים שרצים ברקע. אין כאן גזירת-ערכים או כיול:
+     * ReportGestureDetector ואותם ספים שרצים ברקע. אין כאן גזירת-ערכים או כיול:
      * התרגול נועד ללמד את המחווה ולאשר שהחומרה מגיבה.
      */
     private fun renderKnockInstructionStep() {
@@ -392,8 +392,10 @@ class QuestionnaireActivity : Activity() {
         container.addView(TextView(this).apply {
             text = "לפני שמתחילים — שים את השעון על היד.\n\n" +
                 "בכל פעם שהתגברת על ניסיון:\n" +
-                "נער את היד בחוזקה 4 פעמים הלוך-ושוב, כמו לנער מים מהיד. " +
-                "בערך שנייה.\n\n" +
+                "נער את היד 3 פעמים הלוך-ושוב, ומיד אחר כך הקש פעמיים " +
+                "על השעון.\n\n" +
+                "שני השלבים ביחד — ניעור לבדו לא מספיק, כדי שניעור מים " +
+                "אחרי נטילת ידיים לא ייחשב בטעות כדיווח.\n\n" +
                 "תנועה נמרצת וברורה — כדי שהשעון לא יתבלבל עם הליכה " +
                 "או תנועה רגילה."
             textSize = 14f
@@ -402,7 +404,7 @@ class QuestionnaireActivity : Activity() {
         })
 
         val statusText = TextView(this).apply {
-            text = "לחץ 'התחל תרגול' ונער את היד בחוזקה"
+            text = "לחץ 'התחל תרגול', נער את היד ואז הקש פעמיים"
             textSize = 13f
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 16)
@@ -460,7 +462,7 @@ class QuestionnaireActivity : Activity() {
         startButton.setOnClickListener {
             startButton.visibility = View.GONE
             skipButton.visibility = View.GONE
-            statusText.text = "מקשיב… נער את היד עכשיו"
+            statusText.text = "מקשיב… נער את היד, ואז הקש פעמיים"
             startPracticeListening(
                 onDetected = { reversals, peak ->
                     // אין מה לשמור: הניעור לא דורש כיול אישי. התרגול כאן
@@ -474,7 +476,7 @@ class QuestionnaireActivity : Activity() {
                 },
                 onTimeout = {
                     EventLog.log(this, "INFO", "shake_practice_timeout")
-                    statusText.text = "לא זוהה ניעור. נסה שוב, בתנועה נמרצת יותר."
+                    statusText.text = "המחווה לא הושלמה. נסה שוב — ניעור ואז שתי נקישות."
                     startButton.text = "נסה שוב"
                     startButton.visibility = View.VISIBLE
                     skipButton.visibility = View.VISIBLE
@@ -486,7 +488,7 @@ class QuestionnaireActivity : Activity() {
     }
 
     /**
-     * מקשיב לחלון-זמן קצר (TAP_PRACTICE_TIMEOUT_MS) עם אותו ShakeDetector
+     * מקשיב לחלון-זמן קצר (TAP_PRACTICE_TIMEOUT_MS) עם אותו ReportGestureDetector
      * ואותם ספים בדיוק שרצים ברקע — התרגול חייב לשקף את המציאות, אחרת
      * הוא מאשר משהו שלא יעבוד אחר-כך. אין כאן גזירת-ערכים: הניעור לא
      * דורש כיול אישי.
@@ -511,9 +513,9 @@ class QuestionnaireActivity : Activity() {
         practiceListenStartMs = System.currentTimeMillis()
         practiceDiagnosticTextRef?.text = "החלפות-כיוון: 0 · שיא: —"
 
-        val detector = ShakeDetector(
+        val detector = ReportGestureDetector(
             onLog = { tag, detail -> EventLog.log(this, tag, detail) },
-            onShakeDetected = { reversals, peak ->
+            onGestureCompleted = { reversals, peak ->
                 stopPracticeListening()
                 onDetected(reversals, peak)
             }
@@ -533,8 +535,14 @@ class QuestionnaireActivity : Activity() {
                 // משוב חי על מה שבאמת קובע — מספר החלפות-הכיוון מול הדרוש.
                 // מאפשר למשתמש לראות שהוא "מתקרב" במקום לנחש.
                 practiceDiagnosticTextRef?.text =
-                    "החלפות-כיוון: ${detector.currentReversals()}/${DebugConfig.SHAKE_MIN_REVERSALS} · " +
-                        "שיא: ${"%.0f".format(practiceMaxMagnitude)}/${"%.0f".format(DebugConfig.SHAKE_MIN_PEAK)}"
+                    if (detector.isArmed()) {
+                        "✓ ניעור נקלט — עכשיו הקש\n" +
+                            "נקישות: ${detector.currentTaps()}/${DebugConfig.GESTURE_TAP_COUNT}"
+                    } else {
+                        "שלב 1 — ניעור\n" +
+                            "החלפות-כיוון: ${detector.currentReversals()}/${DebugConfig.SHAKE_MIN_REVERSALS} · " +
+                            "שיא: ${"%.0f".format(practiceMaxMagnitude)}/${"%.0f".format(DebugConfig.SHAKE_MIN_PEAK)}"
+                    }
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) { /* not used */ }
         }
