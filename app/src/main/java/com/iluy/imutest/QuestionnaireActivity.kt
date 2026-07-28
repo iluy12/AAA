@@ -46,6 +46,11 @@ class QuestionnaireActivity : Activity() {
     private lateinit var recordingFile: File
     private var instructionShown = false
 
+    // הפניות למסך-ההקלטה הנוכחי, כדי שאפשר יהיה לחדש הקלטה אוטומטית
+    // מ-onRequestPermissionsResult אחרי שהמשתמש אישר RECORD_AUDIO
+    private var recordButtonRef: Button? = null
+    private var statusTextRef: TextView? = null
+
     // --- תרגול-הקשה (סעיף 4) ---
     private val practiceHandler = Handler(Looper.getMainLooper())
     private var practiceSensorManager: SensorManager? = null
@@ -221,6 +226,7 @@ class QuestionnaireActivity : Activity() {
             gravity = Gravity.CENTER
         }
         container.addView(statusText)
+        statusTextRef = statusText
 
         val recordButton = Button(this)
         recordButton.text = "🎙 הקלט"
@@ -228,6 +234,7 @@ class QuestionnaireActivity : Activity() {
             if (!isRecording) startRecording(recordButton, statusText) else stopRecording(recordButton, statusText)
         }
         container.addView(recordButton)
+        recordButtonRef = recordButton
 
         container.addView(Button(this).apply {
             text = "▶ נגן"
@@ -274,6 +281,24 @@ class QuestionnaireActivity : Activity() {
             status.text = "מקליט…"
         } catch (e: Exception) {
             status.text = "לא הצלחתי להתחיל הקלטה"
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_RECORD_AUDIO &&
+            grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED
+        ) {
+            val button = recordButtonRef
+            val status = statusTextRef
+            // רק אם המשתמש עדיין במסך-ההקלטה ולא כבר מקליט (guard כפול —
+            // הפניות עלולות להיות ריקות/לא-רלוונטיות אם המסך כבר הוחלף
+            // עד שתשובת-ההרשאה חזרה)
+            if (button != null && status != null && !isRecording) {
+                startRecording(button, status)
+            }
         }
     }
 
