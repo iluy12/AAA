@@ -58,6 +58,17 @@ class QuestionnaireActivity : Activity() {
     private var practiceListener: SensorEventListener? = null
     private var practiceTimeoutRunnable: Runnable? = null
 
+    // --- אבחון-הקשה (חלק 0 בסבב העיצוב-מחדש) ---
+    // מונים גולמיים לכל מדגם accelerometer בזמן תרגול, בלתי-תלויים
+    // בתוצאת TapClusterDetector — כדי לדעת מה קורה גם כשאף שכבה לא נדחית
+    // בלוג (המדגמים לא חוצים אפילו את הסף הנמוך ביותר).
+    private var practiceSampleCount = 0
+    private var practiceMaxMagnitude = 0.0
+    private var practiceAboveFloorCount = 0
+    private var practiceJerkCount = 0
+    private var practiceLastMagnitude: Double? = null
+    private var practiceDiagnosticTextRef: TextView? = null
+
     companion object {
         private const val REQUEST_RECORD_AUDIO = 601
     }
@@ -402,6 +413,21 @@ class QuestionnaireActivity : Activity() {
         }
         container.addView(statusText)
 
+        // מצב-אבחון זמני (חלק 0): עוצמה חיה מה-accelerometer בזמן ההאזנה,
+        // כדי לראות בעיניים אילו ערכים החומרה הזו בפועל מייצרת, לפני כל
+        // כיוונון-ספים. יורד אוטומטית עם DEBUG_TAG_ENABLED=false.
+        if (DebugConfig.DEBUG_TAG_ENABLED) {
+            val diagnosticText = TextView(this).apply {
+                text = ""
+                textSize = 11f
+                setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, 16)
+            }
+            container.addView(diagnosticText)
+            practiceDiagnosticTextRef = diagnosticText
+        }
+
         val startButton = Button(this).apply {
             text = "התחל תרגול"
         }
@@ -473,9 +499,18 @@ class QuestionnaireActivity : Activity() {
         val sensor = practiceAccelerometer ?: sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         practiceAccelerometer = sensor
         if (sensor == null) {
+            EventLog.log(this, "ERROR", "no_accelerometer_sensor_found_practice")
             onTimeout()
             return
         }
+
+        // איפוס המונים לתחילת ניסיון-האזנה חדש (כולל "נסה שוב")
+        practiceSampleCount = 0
+        practiceMaxMagnitude = 0.0
+        practiceAboveFloorCount = 0
+        practiceJerkCount = 0
+        practiceLastMagnitude = null
+        practiceDiagnosticTextRef?.text = "עוצמה: — · מקסימום: —\nמדגמים: 0"
 
         val detector = TapClusterDetector(
             magnitudeThreshold = DebugConfig.TAP_CALIBRATION_MAGNITUDE_FLOOR,
@@ -494,12 +529,37 @@ class QuestionnaireActivity : Activity() {
             override fun onSensorChanged(event: SensorEvent) {
                 val x = event.values[0]; val y = event.values[1]; val z = event.values[2]
                 val magnitude = Math.sqrt((x * x + y * y + z * z).toDouble())
-                detector.onSample(magnitude, System.currentTimeMillis())
+                val now = System.currentTimeMillis()
+
+                // ספירה גולמית, עצמאית מ-TapClusterDetector — כדי לדעת מה
+                // קורה גם כשאף שכבה לא נדחית בלוג (המדגם לא חוצה אפילו את
+                // סף-הכיול הנמוך, או חוצה אותו בלי קפיצה חדה מספיק).
+                practiceSampleCount++
+                if (magnitude > practiceMaxMagnitude) practiceMaxMagnitude = magnitude
+                val aboveFloor = magnitude > DebugConfig.TAP_CALIBRATION_MAGNITUDE_FLOOR
+                if (aboveFloor) practiceAboveFloorCount++
+                val prevMagnitude = practiceLastMagnitude
+                practiceLastMagnitude = magnitude
+                if (aboveFloor && prevMagnitude != null &&
+                    Math.abs(magnitude - prevMagnitude) > DebugConfig.TAP_MIN_DELTA
+                ) {
+                    practiceJerkCount++
+                }
+
+                practiceDiagnosticTextRef?.text =
+                    "עוצמה: ${"%.1f".format(magnitude)} · מקסימום: ${"%.1f".format(practiceMaxMagnitude)}\n" +
+                        "מדגמים: $practiceSampleCount · מעל-סף-כיול: $practiceAboveFloorCount · עם-קפיצה: $practiceJerkCount"
+
+                detector.onSample(magnitude, now)
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) { /* not used */ }
         }
         practiceListener = listener
-        sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
+        val registered = sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_GAME)
+        EventLog.log(
+            this, if (registered) "INFO" else "ERROR",
+            "practice_sensor_registered;success=$registered"
+        )
 
         val timeoutRunnable = Runnable {
             stopPracticeListening()
@@ -512,6 +572,17 @@ class QuestionnaireActivity : Activity() {
     private fun stopPracticeListening() {
         practiceTimeoutRunnable?.let { practiceHandler.removeCallbacks(it) }
         practiceTimeoutRunnable = null
+        if (practiceListener != null) {
+            // שורת-סיכום אחת לכל ניסיון-האזנה שהסתיים בפועל (הצלחה או
+            // timeout) — לא ל-skip/onDestroy שקוראים לפונקציה הזו כשאין
+            // ניסיון פעיל, כדי לא לרשום סיכום-ריק כפול.
+            EventLog.log(
+                this, "INFO",
+                "tap_practice_summary;samples=$practiceSampleCount;" +
+                    "max_magnitude=${"%.2f".format(practiceMaxMagnitude)};" +
+                    "above_floor=$practiceAboveFloorCount;jerked=$practiceJerkCount"
+            )
+        }
         practiceListener?.let { practiceSensorManager?.unregisterListener(it) }
         practiceListener = null
     }
