@@ -13,7 +13,9 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 
@@ -53,6 +55,38 @@ class TapDetectorService : Service(), SensorEventListener {
     private var isListening = false
 
     private lateinit var detector: TapClusterDetector
+
+    // --- אבחון-דופק (בדיקה אמפירית: TYPE_HEART_RATE מדווח ברקע באופן
+    // רציף על החומרה הזו, או רק על-דרישה? תלוי-חומרה, לא ידוע מראש —
+    // ראו סעיף 6 במסמך: פיצ'ר-החיזוי צריך את זה כתשתית). מאחורי
+    // DEBUG_TAG_ENABLED כמו שאר האבחון, כמו מקבילו אצל ה-accelerometer.
+    private var hrSampleCountInWindow = 0
+    private var hrMinValueInWindow = Float.MAX_VALUE
+    private var hrMaxValueInWindow = Float.MIN_VALUE
+    private var hrLastSampleMs: Long? = null
+    private var hrIntervalSumMs = 0L
+    private var hrIntervalCountInWindow = 0
+    private var hrDiagnosticStarted = false
+    private val hrDiagnosticHandler = Handler(Looper.getMainLooper())
+    private val hrDiagnosticSummaryRunnable = object : Runnable {
+        override fun run() {
+            val hasSamples = hrSampleCountInWindow > 0
+            val avgIntervalMs = if (hrIntervalCountInWindow > 0) hrIntervalSumMs / hrIntervalCountInWindow else -1L
+            EventLog.log(
+                this@TapDetectorService, "INFO",
+                "hr_diagnostic_summary;samples=$hrSampleCountInWindow;" +
+                    "min=${if (hasSamples) "%.1f".format(hrMinValueInWindow) else "—"};" +
+                    "max=${if (hasSamples) "%.1f".format(hrMaxValueInWindow) else "—"};" +
+                    "avg_interval_ms=$avgIntervalMs"
+            )
+            hrSampleCountInWindow = 0
+            hrMinValueInWindow = Float.MAX_VALUE
+            hrMaxValueInWindow = Float.MIN_VALUE
+            hrIntervalSumMs = 0L
+            hrIntervalCountInWindow = 0
+            hrDiagnosticHandler.postDelayed(this, 60_000L)
+        }
+    }
 
     companion object {
         const val CHANNEL_ID = "iluy_tap_service_channel"
@@ -132,6 +166,10 @@ class TapDetectorService : Service(), SensorEventListener {
                 sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST)
                 offBodySensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
                 heartRateSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
+                if (DebugConfig.DEBUG_TAG_ENABLED && heartRateSensor != null && !hrDiagnosticStarted) {
+                    hrDiagnosticStarted = true
+                    hrDiagnosticHandler.postDelayed(hrDiagnosticSummaryRunnable, 60_000L)
+                }
                 isListening = true
                 EventLog.log(this, "INFO", "tap_service_started")
             } else {
@@ -144,6 +182,10 @@ class TapDetectorService : Service(), SensorEventListener {
     override fun onDestroy() {
         sensorManager.unregisterListener(this)
         isListening = false
+        if (hrDiagnosticStarted) {
+            hrDiagnosticHandler.removeCallbacks(hrDiagnosticSummaryRunnable)
+            hrDiagnosticStarted = false
+        }
         EventLog.log(this, "INFO", "tap_service_stopped")
         super.onDestroy()
     }
@@ -163,6 +205,18 @@ class TapDetectorService : Service(), SensorEventListener {
             Sensor.TYPE_HEART_RATE -> {
                 val hr = event.values.getOrNull(0) ?: 0f
                 wornState = hr > 0f
+                if (DebugConfig.DEBUG_TAG_ENABLED) {
+                    EventLog.log(this, "DEBUG", "hr_sample;value=${"%.1f".format(hr)}")
+                    val now = System.currentTimeMillis()
+                    hrSampleCountInWindow++
+                    if (hr < hrMinValueInWindow) hrMinValueInWindow = hr
+                    if (hr > hrMaxValueInWindow) hrMaxValueInWindow = hr
+                    hrLastSampleMs?.let { last ->
+                        hrIntervalSumMs += (now - last)
+                        hrIntervalCountInWindow++
+                    }
+                    hrLastSampleMs = now
+                }
             }
         }
     }
