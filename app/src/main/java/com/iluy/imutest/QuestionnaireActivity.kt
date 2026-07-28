@@ -68,6 +68,7 @@ class QuestionnaireActivity : Activity() {
     private var practiceJerkCount = 0
     private var practiceLastMagnitude: Double? = null
     private var practiceDiagnosticTextRef: TextView? = null
+    private var practiceListenStartMs: Long = 0L
 
     companion object {
         private const val REQUEST_RECORD_AUDIO = 601
@@ -510,6 +511,7 @@ class QuestionnaireActivity : Activity() {
         practiceAboveFloorCount = 0
         practiceJerkCount = 0
         practiceLastMagnitude = null
+        practiceListenStartMs = System.currentTimeMillis()
         practiceDiagnosticTextRef?.text = "עוצמה: — · מקסימום: —\nמדגמים: 0"
 
         val detector = TapClusterDetector(
@@ -578,11 +580,18 @@ class QuestionnaireActivity : Activity() {
             // שורת-סיכום אחת לכל ניסיון-האזנה שהסתיים בפועל (הצלחה או
             // timeout) — לא ל-skip/onDestroy שקוראים לפונקציה הזו כשאין
             // ניסיון פעיל, כדי לא לרשום סיכום-ריק כפול.
+            // elapsed_ms/hz_actual: כדי לדעת בוודאות אם SENSOR_DELAY_FASTEST
+            // אכן מספק קצב-גבוה בפועל על החומרה הזו, או שהחיישן מוגבל
+            // בעצמו (למשל 200 מדגמים קבועים לחלון 8 שניות = 25Hz, לא
+            // קשור לדגל שביקשנו מ-Android).
+            val elapsedMs = System.currentTimeMillis() - practiceListenStartMs
+            val hzActual = if (elapsedMs > 0) practiceSampleCount / (elapsedMs / 1000.0) else 0.0
             EventLog.log(
                 this, "INFO",
                 "tap_practice_summary;samples=$practiceSampleCount;" +
                     "max_magnitude=${"%.2f".format(practiceMaxMagnitude)};" +
-                    "above_floor=$practiceAboveFloorCount;jerked=$practiceJerkCount"
+                    "above_floor=$practiceAboveFloorCount;jerked=$practiceJerkCount;" +
+                    "elapsed_ms=$elapsedMs;hz_actual=${"%.1f".format(hzActual)}"
             )
         }
         practiceListener?.let { practiceSensorManager?.unregisterListener(it) }
