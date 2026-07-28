@@ -39,4 +39,9 @@ object EventLog {
 
     fun readLastN(context: Context, n: Int): List<String> =
         readAll(context).takeLast(n)
+
+    fun clear(context: Context) {
+        val file = File(context.filesDir, LOG_FILE_NAME)
+        if (file.exists()) file.delete()
+    }
 }

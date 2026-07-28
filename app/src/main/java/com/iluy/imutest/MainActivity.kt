@@ -23,6 +23,8 @@ import androidx.core.content.ContextCompat
 class MainActivity : Activity() {
 
     companion object {
+        private const val LOG_DISPLAY_MAX_LINES = 150
+
         fun start(context: Context) {
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -56,6 +58,8 @@ class MainActivity : Activity() {
 
         renderHome()
     }
+
+    private var logDisplay: TextView? = null
 
     private fun renderHome() {
         val scroll = ScrollView(this)
@@ -95,20 +99,59 @@ class MainActivity : Activity() {
                 setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
                 setPadding(0, 32, 0, 6)
             })
-            container.addView(secondaryButton("הצג לוג אירועים ← העתק ללוח") {
-                showAndCopyLog()
+            container.addView(secondaryButton("הצג לוג אירועים") {
+                toggleLogDisplay()
             })
+            container.addView(secondaryButton("העתק לוג ללוח") {
+                copyLogToClipboard()
+            })
+            container.addView(secondaryButton("נקה לוג") {
+                clearLog()
+            })
+
+            val display = TextView(this).apply {
+                textSize = 10f
+                setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+                setPadding(0, 16, 0, 0)
+                visibility = android.view.View.GONE
+            }
+            logDisplay = display
+            container.addView(display)
         }
 
         setContentView(scroll)
     }
 
-    private fun showAndCopyLog() {
+    private fun toggleLogDisplay() {
+        val display = logDisplay ?: return
+        if (display.visibility == android.view.View.VISIBLE) {
+            display.visibility = android.view.View.GONE
+            return
+        }
+        val lines = EventLog.readLastN(this, LOG_DISPLAY_MAX_LINES)
+        val total = EventLog.readAll(this).size
+        val header = if (total > lines.size) {
+            "מציג $LOG_DISPLAY_MAX_LINES שורות אחרונות מתוך $total\n\n"
+        } else ""
+        display.text = header + lines.joinToString("\n")
+        display.visibility = android.view.View.VISIBLE
+    }
+
+    private fun copyLogToClipboard() {
         val lines = EventLog.readAll(this)
         val full = lines.joinToString("\n")
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         clipboard?.setPrimaryClip(ClipData.newPlainText("iluy_events", full))
         Toast.makeText(this, "כל הלוג הועתק ללוח (${lines.size} שורות)", Toast.LENGTH_LONG).show()
+    }
+
+    private fun clearLog() {
+        EventLog.clear(this)
+        logDisplay?.apply {
+            text = ""
+            visibility = android.view.View.GONE
+        }
+        Toast.makeText(this, "הלוג נוקה", Toast.LENGTH_SHORT).show()
     }
 
     private fun bigButton(label: String, primary: Boolean = false, onClick: () -> Unit): Button =
