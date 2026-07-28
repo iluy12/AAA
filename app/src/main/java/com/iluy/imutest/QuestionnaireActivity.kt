@@ -58,15 +58,11 @@ class QuestionnaireActivity : Activity() {
     private var practiceListener: SensorEventListener? = null
     private var practiceTimeoutRunnable: Runnable? = null
 
-    // --- אבחון-הקשה (חלק 0 בסבב העיצוב-מחדש) ---
-    // מונים גולמיים לכל מדגם accelerometer בזמן תרגול, בלתי-תלויים
-    // בתוצאת TapClusterDetector — כדי לדעת מה קורה גם כשאף שכבה לא נדחית
-    // בלוג (המדגמים לא חוצים אפילו את הסף הנמוך ביותר).
+    // --- אבחון-תרגול ---
+    // מונים גולמיים לכל מדגם accelerometer, בלתי-תלויים בתוצאת הזיהוי —
+    // כדי שיהיה מה לקרוא בלוג גם כשהמחווה לא נקלטה בכלל.
     private var practiceSampleCount = 0
     private var practiceMaxMagnitude = 0.0
-    private var practiceAboveFloorCount = 0
-    private var practiceJerkCount = 0
-    private var practiceLastMagnitude: Double? = null
     private var practiceDiagnosticTextRef: TextView? = null
     private var practiceListenStartMs: Long = 0L
 
@@ -377,18 +373,12 @@ class QuestionnaireActivity : Activity() {
     }
 
     /**
-     * הוראת-ההקשה, כפי שננעלה בבדיקות-שטח: 3 הקשות במרכז המסך, בנחרצות —
-     * לא מסגרת, לא גב, לא וריאציות. "בנחרצות" קריטי ולא קישוט: נמצא
-     * בפועל שהקשה רכה נמרחת על פני כמה מדגמים עם עלייה הדרגתית בעוצמה,
-     * וב-25Hz (תקרת-החומרה) ההפרש בין מדגם למדגם לא חוצה את סף ה-jerk —
-     * בלי המילה הזו משתמשים מקישים רך וזה לא נקלט אצלם.
+     * הוראת-המחווה: ניעור-יד נמרץ, כמו ניעור מדחום. החליף את ההקשה אחרי
+     * שארבעה סבבי-כיוונון בשטח לא התכנסו — ראו ShakeDetector להסבר המלא.
      *
-     * "התחל תרגול" מפעיל האזנה אמיתית ל-accelerometer, דרך אותו
-     * TapClusterDetector שמשמש את TapDetectorService — רק עם סף-רצפה נמוך
-     * (TAP_CALIBRATION_MAGNITUDE_FLOOR) במקום הסף הגלובלי, כדי לתפוס גם
-     * הקשות חלשות-יחסית ולכייל מהן סף אישי (סעיף 7: "כיול אישי לסף-
-     * ההקשה"). הסף הנגזר תמיד מהודק בין הרצפה לסף הגלובלי — כיול יכול רק
-     * להוסיף רגישות, לעולם לא לגרוע ממנה.
+     * "התחל תרגול" מפעיל האזנה אמיתית ל-accelerometer דרך אותו
+     * ShakeDetector ואותם ספים שרצים ברקע. אין כאן גזירת-ערכים או כיול:
+     * התרגול נועד ללמד את המחווה ולאשר שהחומרה מגיבה.
      */
     private fun renderKnockInstructionStep() {
         val scroll = ScrollView(this)
@@ -402,17 +392,16 @@ class QuestionnaireActivity : Activity() {
         container.addView(TextView(this).apply {
             text = "לפני שמתחילים — שים את השעון על היד.\n\n" +
                 "בכל פעם שהתגברת על ניסיון:\n" +
-                "הרם את היד כאילו אתה מסתכל על השעה, החזק אותה רגועה לרגע, " +
-                "ואז הקש 3 פעמים במרכז המסך.\n\n" +
-                "התנוחה היא שמאפשרת לשעון לזהות הקשה עדינה. עכשיו, בתרגול, " +
-                "הקש בנחרצות — כך נלמד את התנוחה שלך."
+                "נער את היד בחוזקה, כמו שמנערים מדחום, במשך כשנייה.\n\n" +
+                "תנועה נמרצת וברורה — כדי שהשעון לא יתבלבל עם הליכה " +
+                "או תנועה רגילה."
             textSize = 14f
             setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
             setPadding(0, 0, 0, 20)
         })
 
         val statusText = TextView(this).apply {
-            text = "לחץ 'התחל תרגול', החזק את היד בתנוחה, והקש 3 פעמים במרכז המסך"
+            text = "לחץ 'התחל תרגול' ונער את היד בחוזקה"
             textSize = 13f
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 16)
@@ -440,7 +429,7 @@ class QuestionnaireActivity : Activity() {
         container.addView(startButton)
 
         val skipButton = Button(this).apply {
-            text = "המשך בלי כיול אישי"
+            text = "המשך בלי תרגול"
             visibility = View.GONE
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
@@ -470,30 +459,21 @@ class QuestionnaireActivity : Activity() {
         startButton.setOnClickListener {
             startButton.visibility = View.GONE
             skipButton.visibility = View.GONE
-            statusText.text = "מקשיב… הקש עכשיו, בנחרצות"
+            statusText.text = "מקשיב… נער את היד עכשיו"
             startPracticeListening(
-                onDetected = { calibrated, weakest, gravityAtStart ->
-                    LocalStore.setPersonalTapThreshold(this, calibrated)
+                onDetected = { reversals, peak ->
+                    // אין מה לשמור: הניעור לא דורש כיול אישי. התרגול כאן
+                    // נועד ללמד את המחווה ולאשר שהחומרה מגיבה, לא לגזור ערך.
                     EventLog.log(
                         this, "INFO",
-                        "personal_tap_threshold_calibrated;value=${"%.2f".format(calibrated)};weakest_sample=${"%.2f".format(weakest)}"
+                        "shake_practice_success;reversals=$reversals;peak=${"%.1f".format(peak)}"
                     )
-                    // תנוחת-פרק-היד ברגע שהצרור התחיל — זה מה שיאפשר
-                    // מכאן ואילך הקשות עדינות (שער-תנוחה ב-TapClusterDetector).
-                    if (gravityAtStart != null && gravityAtStart.size >= 3) {
-                        LocalStore.setReferenceGravity(this, gravityAtStart)
-                        EventLog.log(
-                            this, "INFO",
-                            "reference_gravity_calibrated;x=${"%.2f".format(gravityAtStart[0])};" +
-                                "y=${"%.2f".format(gravityAtStart[1])};z=${"%.2f".format(gravityAtStart[2])}"
-                        )
-                    }
                     statusText.text = "✓ נקלט"
                     continueButton.visibility = View.VISIBLE
                 },
                 onTimeout = {
-                    EventLog.log(this, "INFO", "tap_practice_timeout")
-                    statusText.text = "לא זיהינו מספיק דפיקות. אפשר לנסות שוב."
+                    EventLog.log(this, "INFO", "shake_practice_timeout")
+                    statusText.text = "לא זוהה ניעור. נסה שוב, בתנועה נמרצת יותר."
                     startButton.text = "נסה שוב"
                     startButton.visibility = View.VISIBLE
                     skipButton.visibility = View.VISIBLE
@@ -505,12 +485,13 @@ class QuestionnaireActivity : Activity() {
     }
 
     /**
-     * מקשיב לחלון-זמן קצר (TAP_PRACTICE_TIMEOUT_MS) עם סף-כיול נמוך.
-     * ברגע ש-TapClusterDetector מזהה צרור-הקשות תקין, גוזרים סף אישי
-     * מהעוצמה-החלשה-ביותר שנקלטה (עם שוליים) ומדווחים חזרה ל-onDetected.
+     * מקשיב לחלון-זמן קצר (TAP_PRACTICE_TIMEOUT_MS) עם אותו ShakeDetector
+     * ואותם ספים בדיוק שרצים ברקע — התרגול חייב לשקף את המציאות, אחרת
+     * הוא מאשר משהו שלא יעבוד אחר-כך. אין כאן גזירת-ערכים: הניעור לא
+     * דורש כיול אישי.
      */
     private fun startPracticeListening(
-        onDetected: (calibrated: Double, weakest: Double, gravityAtStart: FloatArray?) -> Unit,
+        onDetected: (reversals: Int, peak: Double) -> Unit,
         onTimeout: () -> Unit
     ) {
         val sm = (practiceSensorManager
@@ -526,26 +507,14 @@ class QuestionnaireActivity : Activity() {
         // איפוס המונים לתחילת ניסיון-האזנה חדש (כולל "נסה שוב")
         practiceSampleCount = 0
         practiceMaxMagnitude = 0.0
-        practiceAboveFloorCount = 0
-        practiceJerkCount = 0
-        practiceLastMagnitude = null
         practiceListenStartMs = System.currentTimeMillis()
-        practiceDiagnosticTextRef?.text = "עוצמה: — · מקסימום: —\nמדגמים: 0"
+        practiceDiagnosticTextRef?.text = "החלפות-כיוון: 0 · שיא: —"
 
-        val detector = TapClusterDetector(
-            magnitudeThreshold = DebugConfig.TAP_CALIBRATION_MAGNITUDE_FLOOR,
-            // referenceGravity נשאר null בכוונה: בתרגול אנחנו *לוכדים* את
-            // תנוחת-הייחוס, לא אוכפים אותה. אכיפה כאן הייתה יוצרת בעיה
-            // מעגלית — צריך שער כדי לכייל את השער.
-            referenceGravity = null,
+        val detector = ShakeDetector(
             onLog = { tag, detail -> EventLog.log(this, tag, detail) },
-            onTapPatternDetected = { _, magnitudes, gravityAtStart ->
-                val weakest = magnitudes.minOrNull() ?: DebugConfig.TAP_MAGNITUDE_THRESHOLD
-                val calibrated = (weakest * DebugConfig.TAP_CALIBRATION_MARGIN).coerceIn(
-                    DebugConfig.TAP_CALIBRATION_MAGNITUDE_FLOOR, DebugConfig.TAP_MAGNITUDE_THRESHOLD
-                )
+            onShakeDetected = { reversals, peak ->
                 stopPracticeListening()
-                onDetected(calibrated, weakest, gravityAtStart)
+                onDetected(reversals, peak)
             }
         )
 
@@ -555,26 +524,16 @@ class QuestionnaireActivity : Activity() {
                 val magnitude = Math.sqrt((x * x + y * y + z * z).toDouble())
                 val now = System.currentTimeMillis()
 
-                // ספירה גולמית, עצמאית מ-TapClusterDetector — כדי לדעת מה
-                // קורה גם כשאף שכבה לא נדחית בלוג (המדגם לא חוצה אפילו את
-                // סף-הכיול הנמוך, או חוצה אותו בלי קפיצה חדה מספיק).
                 practiceSampleCount++
                 if (magnitude > practiceMaxMagnitude) practiceMaxMagnitude = magnitude
-                val aboveFloor = magnitude > DebugConfig.TAP_CALIBRATION_MAGNITUDE_FLOOR
-                if (aboveFloor) practiceAboveFloorCount++
-                val prevMagnitude = practiceLastMagnitude
-                practiceLastMagnitude = magnitude
-                if (aboveFloor && prevMagnitude != null &&
-                    Math.abs(magnitude - prevMagnitude) > DebugConfig.TAP_MIN_DELTA
-                ) {
-                    practiceJerkCount++
-                }
-
-                practiceDiagnosticTextRef?.text =
-                    "עוצמה: ${"%.1f".format(magnitude)} · מקסימום: ${"%.1f".format(practiceMaxMagnitude)}\n" +
-                        "מדגמים: $practiceSampleCount · מעל-סף-כיול: $practiceAboveFloorCount · עם-קפיצה: $practiceJerkCount"
 
                 detector.onSample(x, y, z, now)
+
+                // משוב חי על מה שבאמת קובע — מספר החלפות-הכיוון מול הדרוש.
+                // מאפשר למשתמש לראות שהוא "מתקרב" במקום לנחש.
+                practiceDiagnosticTextRef?.text =
+                    "החלפות-כיוון: ${detector.currentReversals()}/${DebugConfig.SHAKE_MIN_REVERSALS} · " +
+                        "שיא: ${"%.0f".format(practiceMaxMagnitude)}/${"%.0f".format(DebugConfig.SHAKE_MIN_PEAK)}"
             }
             override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) { /* not used */ }
         }
@@ -602,17 +561,12 @@ class QuestionnaireActivity : Activity() {
             // שורת-סיכום אחת לכל ניסיון-האזנה שהסתיים בפועל (הצלחה או
             // timeout) — לא ל-skip/onDestroy שקוראים לפונקציה הזו כשאין
             // ניסיון פעיל, כדי לא לרשום סיכום-ריק כפול.
-            // elapsed_ms/hz_actual: כדי לדעת בוודאות אם SENSOR_DELAY_FASTEST
-            // אכן מספק קצב-גבוה בפועל על החומרה הזו, או שהחיישן מוגבל
-            // בעצמו (למשל 200 מדגמים קבועים לחלון 8 שניות = 25Hz, לא
-            // קשור לדגל שביקשנו מ-Android).
             val elapsedMs = System.currentTimeMillis() - practiceListenStartMs
             val hzActual = if (elapsedMs > 0) practiceSampleCount / (elapsedMs / 1000.0) else 0.0
             EventLog.log(
                 this, "INFO",
-                "tap_practice_summary;samples=$practiceSampleCount;" +
+                "shake_practice_summary;samples=$practiceSampleCount;" +
                     "max_magnitude=${"%.2f".format(practiceMaxMagnitude)};" +
-                    "above_floor=$practiceAboveFloorCount;jerked=$practiceJerkCount;" +
                     "elapsed_ms=$elapsedMs;hz_actual=${"%.1f".format(hzActual)}"
             )
         }

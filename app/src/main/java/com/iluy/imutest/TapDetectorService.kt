@@ -19,23 +19,22 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 
 /**
- * שירות שרץ ברקע תמיד (כולל מסך כבוי) ומזהה צרור-דפיקות על גוף השעון —
- * הבסיס שהוכח עובד באפליקציית הבדיקה (testtap3 / ImuLoggerService), עכשיו
- * עם לוגיקת זיהוי-דפוס מלאה במקום רק תיעוד גולמי.
+ * שירות שרץ ברקע תמיד (כולל מסך כבוי) ומזהה את מחוות-הדיווח.
  *
- * לוגיקת-הדפוס עצמה (שכבות 1–7 — עוצמה, jerk, refractory, פולס-קצר,
- * תיחום-צרור, סדירות-קצב, דמיון-לדפיקה-ראשונה) חיה ב-TapClusterDetector,
- * משותפת עם מסך התרגול בשאלון. השירות עצמו אחראי רק על שכבות שתלויות
- * בחיישני-רקע/מצב-שירות:
- *  8. worn-gating (WORN_GATING_ENABLED) — אם יש חיישן off-body/דופק
- *     זמין, מתעלמים מדפיקות כשהשעון לא על היד. נופל בחזרה בבטחה אם אין
- *     חיישן/הרשאה.
- *  9. השתקת-תנועה-רציפה (סעיף 5 במסמך) — הליכה/נסיעה משתיקה זיהוי.
+ * המחווה היא **ניעור-יד**, לא הקשה. ההקשה נזנחה אחרי ארבעה סבבי-כיוונון
+ * בשטח שלא התכנסו: ב-25Hz (תקרת-החומרה) הקשה נמשכת 1-2 מדגמים, והעוצמה
+ * שלה (15-17) יושבת בתוך טווח ההליכה (12-20) — אין סף שמפריד ביניהן.
+ * הניעור נבדל בתדירות, ממד שבו אין חפיפה. ראו ShakeDetector.
  *
- * הסף האישי המכויל בתרגול (LocalStore.getPersonalTapThreshold) נקרא מחדש
- * בכל onStartCommand (לא רק פעם אחת ב-onCreate) — כדי שגם שירות שכבר רץ
- * בזיכרון יקלוט כיול חדש (למשל אחרי מילוי-שאלון-מחדש). נופל בחזרה
- * ל-DebugConfig.TAP_MAGNITUDE_THRESHOLD הגלובלי אם אין ערך-אישי שמור.
+ * לוגיקת-הזיהוי עצמה חיה ב-ShakeDetector (Kotlin טהור, בלי תלות
+ * ב-Context). השירות אחראי רק על מה שתלוי בחיישני-רקע ובמצב-שירות:
+ *  - worn-gating (WORN_GATING_ENABLED) — אם יש חיישן off-body/דופק זמין,
+ *    מתעלמים מהמחווה כשהשעון לא על היד. נופל בחזרה בבטחה אם אין
+ *    חיישן/הרשאה.
+ *  - היכון שעתי ו-cooldown (LocalStore) — הסלמה בניעור שני באותה שעה.
+ *
+ * אין כאן כיול-אישי: תדירות-ניעור אינה תלוית-אדם כמו עוצמת-הקשה, ולכן
+ * נמחקו הסף האישי ותנוחת-הייחוס שהיו נדרשים למסלול ההקשה.
  *
  * זו עדיין לא הפרדה בין Sleep/Active/Moving לצורך חיישן פיזיולוגי (לא
  * רלוונטי ל-v1 — אין חיישן פיזיולוגי זמין עדיין, תלוי בתשובת ויקי).
@@ -53,7 +52,7 @@ class TapDetectorService : Service(), SensorEventListener {
 
     private var isListening = false
 
-    private lateinit var detector: TapClusterDetector
+    private lateinit var detector: ShakeDetector
 
     // --- אבחון-דופק (בדיקה אמפירית: TYPE_HEART_RATE מדווח ברקע באופן
     // רציף על החומרה הזו, או רק על-דרישה? תלוי-חומרה, לא ידוע מראש —
@@ -112,14 +111,9 @@ class TapDetectorService : Service(), SensorEventListener {
         logAvailableSensors()
         setupWornGating()
 
-        detector = TapClusterDetector(
-            magnitudeThreshold = DebugConfig.TAP_MAGNITUDE_THRESHOLD,
-            wornGatingEnabled = DebugConfig.WORN_GATING_ENABLED,
-            isWorn = { wornState },
-            wornSensorAvailable = { wornSensorAvailable },
-            sustainedMotionSuppressMs = DebugConfig.SUSTAINED_MOTION_SUPPRESS_MS,
+        detector = ShakeDetector(
             onLog = { tag, detail -> EventLog.log(this, tag, detail) },
-            onTapPatternDetected = { count, _, _ -> onTapPatternDetected(count) }
+            onShakeDetected = { reversals, peak -> onReportGestureDetected(reversals, peak) }
         )
     }
 
@@ -195,11 +189,6 @@ class TapDetectorService : Service(), SensorEventListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, buildNotification())
-        detector.magnitudeThreshold = LocalStore.getPersonalTapThreshold(this)
-            ?: DebugConfig.TAP_MAGNITUDE_THRESHOLD
-        // אותה סיבה שהסף נקרא מחדש בכל onStartCommand ולא רק ב-onCreate:
-        // שירות שכבר רץ בזיכרון צריך לקלוט כיול-תנוחה חדש מהשאלון.
-        detector.referenceGravity = LocalStore.getReferenceGravity(this)
         if (!isListening) {
             val sensor = accelerometer
             if (sensor != null) {
@@ -269,15 +258,22 @@ class TapDetectorService : Service(), SensorEventListener {
         }
     }
 
-    private fun onTapPatternDetected(spikeCount: Int) {
+    private fun onReportGestureDetected(reversals: Int, peak: Double) {
         val now = System.currentTimeMillis()
+
+        // worn-gating: היה בתוך TapClusterDetector שנמחק, ולכן הועבר לכאן.
+        // ShakeDetector נשאר Kotlin טהור בלי תלות בחיישני-רקע.
+        if (DebugConfig.WORN_GATING_ENABLED && wornSensorAvailable && !wornState) {
+            EventLog.log(this, "DEBUG", "shake_ignored_not_worn")
+            return
+        }
 
         if (now < LocalStore.getCooldownUntil(this)) {
             EventLog.log(this, "INFO", "tap_ignored_cooldown_active")
             return
         }
 
-        val debugDetail = "הקשה ($spikeCount זוהו, קצב-דלת)"
+        val debugDetail = "ניעור ($reversals החלפות, שיא ${"%.0f".format(peak)})"
         val standbyUntil = LocalStore.getTapStandbyUntil(this)
 
         if (now < standbyUntil) {
