@@ -24,6 +24,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val LOG_DISPLAY_MAX_LINES = 150
+        private const val REQUEST_BODY_SENSORS = 701
 
         fun start(context: Context) {
             val intent = Intent(context, MainActivity::class.java).apply {
@@ -49,7 +50,7 @@ class MainActivity : Activity() {
             != android.content.pm.PackageManager.PERMISSION_GRANTED
         ) {
             androidx.core.app.ActivityCompat.requestPermissions(
-                this, arrayOf(android.Manifest.permission.BODY_SENSORS), 701
+                this, arrayOf(android.Manifest.permission.BODY_SENSORS), REQUEST_BODY_SENSORS
             )
         }
 
@@ -57,6 +58,21 @@ class MainActivity : Activity() {
         TapDetectorService.start(this)
 
         renderHome()
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_BODY_SENSORS &&
+            grantResults.isNotEmpty() && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            // setupWornGating() ב-TapDetectorService רץ פעם אחת ב-onCreate ולא
+            // בודק שוב אחר-כך — מפעילים מחדש כדי שהשירות יבדוק את ההרשאה
+            // שעכשיו קיימת ויפעיל worn-gating מבוסס-דופק אם צריך.
+            TapDetectorService.stop(this)
+            TapDetectorService.start(this)
+        }
     }
 
     private var logDisplay: TextView? = null
