@@ -31,8 +31,10 @@ import androidx.core.content.ContextCompat
  *     חיישן/הרשאה.
  *  9. השתקת-תנועה-רציפה (סעיף 5 במסמך) — הליכה/נסיעה משתיקה זיהוי.
  *
- * הסף האישי המכויל בתרגול (LocalStore.getPersonalTapThreshold) משמש אם
- * קיים, אחרת נופלים חזרה ל-DebugConfig.TAP_MAGNITUDE_THRESHOLD הגלובלי.
+ * הסף האישי המכויל בתרגול (LocalStore.getPersonalTapThreshold) נקרא מחדש
+ * בכל onStartCommand (לא רק פעם אחת ב-onCreate) — כדי שגם שירות שכבר רץ
+ * בזיכרון יקלוט כיול חדש (למשל אחרי מילוי-שאלון-מחדש). נופל בחזרה
+ * ל-DebugConfig.TAP_MAGNITUDE_THRESHOLD הגלובלי אם אין ערך-אישי שמור.
  *
  * זו עדיין לא הפרדה בין Sleep/Active/Moving לצורך חיישן פיזיולוגי (לא
  * רלוונטי ל-v1 — אין חיישן פיזיולוגי זמין עדיין, תלוי בתשובת ויקי).
@@ -76,10 +78,8 @@ class TapDetectorService : Service(), SensorEventListener {
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         setupWornGating()
 
-        val magnitudeThreshold = LocalStore.getPersonalTapThreshold(this)
-            ?: DebugConfig.TAP_MAGNITUDE_THRESHOLD
         detector = TapClusterDetector(
-            magnitudeThreshold = magnitudeThreshold,
+            magnitudeThreshold = DebugConfig.TAP_MAGNITUDE_THRESHOLD,
             wornGatingEnabled = DebugConfig.WORN_GATING_ENABLED,
             isWorn = { wornState },
             wornSensorAvailable = { wornSensorAvailable },
@@ -120,6 +120,8 @@ class TapDetectorService : Service(), SensorEventListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, buildNotification())
+        detector.magnitudeThreshold = LocalStore.getPersonalTapThreshold(this)
+            ?: DebugConfig.TAP_MAGNITUDE_THRESHOLD
         if (!isListening) {
             val sensor = accelerometer
             if (sensor != null) {

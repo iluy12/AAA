@@ -412,11 +412,11 @@ class QuestionnaireActivity : Activity() {
             skipButton.visibility = View.GONE
             statusText.text = "מקשיב… דפוק עכשיו"
             startPracticeListening(
-                onDetected = { thresholdUsed ->
-                    LocalStore.setPersonalTapThreshold(this, thresholdUsed)
+                onDetected = { calibrated, weakest ->
+                    LocalStore.setPersonalTapThreshold(this, calibrated)
                     EventLog.log(
                         this, "INFO",
-                        "tap_practice_calibrated;threshold=${"%.2f".format(thresholdUsed)}"
+                        "personal_tap_threshold_calibrated;value=${"%.2f".format(calibrated)};weakest_sample=${"%.2f".format(weakest)}"
                     )
                     statusText.text = "✓ נקלט!"
                     continueButton.visibility = View.VISIBLE
@@ -439,7 +439,7 @@ class QuestionnaireActivity : Activity() {
      * ברגע ש-TapClusterDetector מזהה צרור-הקשות תקין, גוזרים סף אישי
      * מהעוצמה-החלשה-ביותר שנקלטה (עם שוליים) ומדווחים חזרה ל-onDetected.
      */
-    private fun startPracticeListening(onDetected: (Double) -> Unit, onTimeout: () -> Unit) {
+    private fun startPracticeListening(onDetected: (calibrated: Double, weakest: Double) -> Unit, onTimeout: () -> Unit) {
         val sm = (practiceSensorManager
             ?: (getSystemService(Context.SENSOR_SERVICE) as SensorManager).also { practiceSensorManager = it })
         val sensor = practiceAccelerometer ?: sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -458,7 +458,7 @@ class QuestionnaireActivity : Activity() {
                     DebugConfig.TAP_CALIBRATION_MAGNITUDE_FLOOR, DebugConfig.TAP_MAGNITUDE_THRESHOLD
                 )
                 stopPracticeListening()
-                onDetected(calibrated)
+                onDetected(calibrated, weakest)
             }
         )
 

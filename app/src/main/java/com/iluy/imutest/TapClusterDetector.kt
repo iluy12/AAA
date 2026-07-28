@@ -11,7 +11,10 @@ package com.iluy.imutest
  * לתפוס הקשות חלשות-יחסית ולכייל מהן.
  */
 class TapClusterDetector(
-    private val magnitudeThreshold: Double,
+    // var, לא val: TapDetectorService מעדכן את זה בכל onStartCommand (לא
+    // רק פעם אחת ב-onCreate) כדי לתפוס כיול-אישי שנשמר אחרי שהשירות כבר
+    // קיים בזיכרון (למשל אחרי מילוי-שאלון-מחדש).
+    var magnitudeThreshold: Double,
     private val wornGatingEnabled: Boolean = false,
     private val isWorn: () -> Boolean = { true },
     private val wornSensorAvailable: () -> Boolean = { false },
