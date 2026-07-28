@@ -22,6 +22,20 @@ class TapClusterDetector(
     private val onLog: (tag: String, detail: String) -> Unit = { _, _ -> },
     private val onTapPatternDetected: (count: Int, magnitudes: List<Double>) -> Unit
 ) {
+    companion object {
+        /**
+         * רצפה מוחלטת שלעולם לא יורדים מתחתיה, ללא קשר למה שהוזן
+         * ב-magnitudeThreshold. נמדד בפועל: כוח-הכובד הבסיסי (מנוחה) הוא
+         * ~9.8 m/s². סף מתחת לזה תוקע לצמיתות: המדגם אף פעם לא יורד
+         * מתחת לסף, אז consecutiveAboveThresholdSamples אף פעם לא
+         * מתאפס, ואחרי TAP_MAX_CONSECUTIVE_ABOVE_THRESHOLD_SAMPLES מדגמים
+         * הכל נדחה כ-sustained_pulse עד סוף החלון — בדיוק הבאג שגילינו
+         * ב-TAP_CALIBRATION_MAGNITUDE_FLOOR=8.0. זו הגנה מבנית: שינוי-
+         * ערך עתידי לא יכול להחזיר את הבאג הזה בשקט.
+         */
+        private const val ABSOLUTE_MINIMUM_MAGNITUDE_THRESHOLD = 10.5
+    }
+
     private val recentSpikes = ArrayDeque<Long>()
     private val recentMagnitudes = ArrayDeque<Double>()
 
@@ -39,11 +53,27 @@ class TapClusterDetector(
     private var lastAcceptedSpikeMs: Long = 0L
     private var consecutiveAboveThresholdSamples = 0
 
+    private var warnedLowThreshold = false
+
     fun onSample(magnitude: Double, now: Long) {
+        val effectiveThreshold = if (magnitudeThreshold < ABSOLUTE_MINIMUM_MAGNITUDE_THRESHOLD) {
+            if (!warnedLowThreshold) {
+                warnedLowThreshold = true
+                onLog(
+                    "ERROR",
+                    "magnitude_threshold_below_safe_floor;configured=${"%.2f".format(magnitudeThreshold)};" +
+                        "using=$ABSOLUTE_MINIMUM_MAGNITUDE_THRESHOLD"
+                )
+            }
+            ABSOLUTE_MINIMUM_MAGNITUDE_THRESHOLD
+        } else {
+            magnitudeThreshold
+        }
+
         val prevMagnitude = lastMagnitude
         lastMagnitude = magnitude
 
-        val aboveThreshold = magnitude > magnitudeThreshold
+        val aboveThreshold = magnitude > effectiveThreshold
         val jumpedSuddenly = prevMagnitude != null &&
             Math.abs(magnitude - prevMagnitude) > DebugConfig.TAP_MIN_DELTA
 
