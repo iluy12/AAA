@@ -39,16 +39,18 @@ jobs:
 
       # Actions Artifacts require a logged-in GitHub session to download.
       # Release assets are public, unauthenticated, direct-download URLs —
-      # this keeps ONE stable link (same tag every time) that always points
-      # at the newest successful build on main, for installing straight
-      # from the watch's browser without going through GitHub's UI:
-      # https://github.com/iluy12/AAA/releases/download/latest-debug/app-debug.apk
-      - name: Publish latest APK as a public GitHub Release asset
+      # for installing straight from the watch's browser without going
+      # through GitHub's UI. Each run gets its own tag (build-<run_number>,
+      # always increasing, never reused) so every past build stays
+      # published as its own release — nothing here is ever overwritten
+      # or deleted. The link changes every time; find the newest one at:
+      # https://github.com/iluy12/AAA/releases
+      - name: Publish this build as a new public GitHub Release asset
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: latest-debug
-          name: "Latest debug build"
-          body: "Auto-published on every successful push to main. Commit: ${{ github.sha }}"
+          tag_name: build-${{ github.run_number }}
+          name: "Debug build #${{ github.run_number }}"
+          body: "Commit: ${{ github.sha }}"
           prerelease: true
           files: app/build/outputs/apk/debug/app-debug.apk
         env:
