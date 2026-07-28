@@ -28,11 +28,24 @@ object CallHelper {
             placeCallDirectly(activity)
         } else {
             // אין הרשאה עדיין — פותחים חייגן עם המספר ממולא, המשתמש מאשר בעצמו.
-            // גם מבקשים הרשאה לפעם הבאה.
+            // גם מבקשים הרשאה לפעם הבאה. אם היא תתקבל — onPermissionResult
+            // ישלים את השיחה בפועל, לא רק ישאיר את החייגן פתוח.
             ActivityCompat.requestPermissions(
                 activity, arrayOf(Manifest.permission.CALL_PHONE), REQUEST_CALL_PERMISSION
             )
             openDialer(activity)
+        }
+    }
+
+    /**
+     * לקרוא מ-onRequestPermissionsResult של כל Activity שקורא ל-startCall
+     * (RiskFlowActivity, HelpMenuActivity) — Android מחזיר את תוצאת ההרשאה
+     * ל-Activity המבקש, לא ל-object הזה, אז זו נקודת-הכניסה היחידה האפשרית.
+     */
+    fun onPermissionResult(activity: Activity, requestCode: Int, grantResults: IntArray) {
+        if (requestCode != REQUEST_CALL_PERMISSION) return
+        if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            placeCallDirectly(activity)
         }
     }
 

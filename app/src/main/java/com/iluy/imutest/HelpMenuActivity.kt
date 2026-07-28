@@ -134,6 +134,13 @@ class HelpMenuActivity : Activity() {
         super.onDestroy()
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        CallHelper.onPermissionResult(this, requestCode, grantResults)
+    }
+
     private fun showTips() {
         val userTips = LocalStore.getMultiChoice(this, LocalStore.KEY_Q5_HELPS)
         val genericTips = listOf(

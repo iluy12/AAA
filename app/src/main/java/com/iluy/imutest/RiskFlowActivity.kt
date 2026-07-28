@@ -133,6 +133,13 @@ class RiskFlowActivity : Activity() {
         finish()
     }
 
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        CallHelper.onPermissionResult(this, requestCode, grantResults)
+    }
+
     private fun debugTag(text: String): View = TextView(this).apply {
         this.text = text
         textSize = 11f
