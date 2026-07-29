@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- קובץ ה-APK שהורד יושב ב-cache. FileProvider חושף אותו כ-content://
+         כדי שמתקין החבילות יוכל לקרוא אותו — מ-API 24 אסור למסור file://
+         לאפליקציה אחרת. -->
+    <cache-path name="updates" path="updates/" />
+</paths>

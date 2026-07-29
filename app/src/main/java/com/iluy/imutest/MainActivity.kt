@@ -112,6 +112,34 @@ class MainActivity : Activity() {
             AppDrawerActivity.launch(this)
         })
 
+        val updateStatus = TextView(this).apply {
+            textSize = 11f
+            gravity = Gravity.CENTER
+            setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+            setPadding(0, 6, 0, 0)
+            visibility = android.view.View.GONE
+        }
+
+        container.addView(secondaryButton("בדוק עדכון") {
+            updateStatus.visibility = android.view.View.VISIBLE
+            updateStatus.text = "בודק…"
+            UpdateChecker.check(this) { result ->
+                when (result) {
+                    is UpdateChecker.Result.UpToDate ->
+                        updateStatus.text = "הגרסה עדכנית (build ${BuildConfig.VERSION_CODE})"
+                    is UpdateChecker.Result.Failed ->
+                        updateStatus.text = result.reason
+                    is UpdateChecker.Result.Found -> {
+                        updateStatus.text = "נמצא build ${result.update.buildNumber} — מוריד"
+                        UpdateChecker.downloadAndInstall(this, result.update) { status ->
+                            updateStatus.text = status
+                        }
+                    }
+                }
+            }
+        })
+        container.addView(updateStatus)
+
         addHomeAppSection(container)
 
         if (DebugConfig.DEBUG_TAG_ENABLED) {
