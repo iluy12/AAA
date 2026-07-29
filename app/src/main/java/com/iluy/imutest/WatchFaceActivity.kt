@@ -212,10 +212,11 @@ class WatchFaceActivity : Activity() {
                 if (minSide <= 0) return
                 if (length < minSide * DebugConfig.X_GESTURE_MIN_STROKE_FRACTION) return
 
-                // רק אלכסון נחשב. החלקה אופקית או אנכית מתעלמים ממנה
-                // לגמרי — היא שייכת למערכת, לא לנו.
                 val shorterAxis = Math.min(Math.abs(dx), Math.abs(dy))
-                if (shorterAxis < length * DebugConfig.X_GESTURE_MIN_DIAGONAL_RATIO) return
+                if (shorterAxis < length * DebugConfig.X_GESTURE_MIN_DIAGONAL_RATIO) {
+                    handleSwipe(dx, dy, root.width, root.height)
+                    return
+                }
 
                 val direction = if (dx * dy > 0) 1 else -1
                 val now = System.currentTimeMillis()
@@ -233,6 +234,79 @@ class WatchFaceActivity : Activity() {
                     lastStrokeMs = now
                 }
             }
+        }
+    }
+
+    /**
+     * מפת-המחוות של מסך-הבית, כפי שהוגדרה מול ההתנהגות שהייתה בלאנצ'ר
+     * המקורי:
+     *
+     *   ימין→שמאל      כל האפליקציות
+     *   שמאל→ימין      תפריט עילוי
+     *   מלמעלה-ימין ↓  התראות
+     *   מלמעלה-שמאל ↓  לוח הגדרות מהיר
+     *   מלמטה-ימין ↑   אפליקציות פתוחות
+     *   מלמטה-שמאל ↑   לוח-שנה ומידע
+     *
+     * חשוב: אלה לא "ברירות מחדל של אנדרואיד" שנעלמו — לאנדרואיד אין
+     * התנהגות להחלקה אופקית על מסך-הבית. כולן היו פיצ'רים של הלאנצ'ר
+     * של היצרן, ולכן רק מי שמחליף אותו יכול לספק אותן.
+     */
+    private fun handleSwipe(dx: Float, dy: Float, width: Int, height: Int) {
+        val fromRight = downX > width / 2f
+        val horizontal = Math.abs(dx) > Math.abs(dy)
+
+        if (horizontal) {
+            if (dx < 0) AppDrawerActivity.launch(this) else openMenu()
+            return
+        }
+
+        if (dy > 0 && downY < height * 0.3f) {
+            if (fromRight) systemPanel("expandNotificationsPanel")
+            else systemPanel("expandSettingsPanel")
+            return
+        }
+
+        if (dy < 0 && downY > height * 0.7f) {
+            if (fromRight) toggleRecentApps() else InfoActivity.launch(this)
+        }
+    }
+
+    /**
+     * פתיחת פאנלים של המערכת. אין ל-SDK דרך רשמית, ולכן רפלקציה על
+     * StatusBarManager עם הרשאת EXPAND_STATUS_BAR (הרשאה רגילה).
+     * באנדרואיד 8.1 גישה ל-API מוסתר עדיין לא חסומה, ולכן זה אמור
+     * לעבוד כאן — אבל זו הסתמכות על פנימיות, ולכן כישלון נרשם ולא קורס.
+     */
+    private fun systemPanel(method: String) {
+        try {
+            val service = getSystemService("statusbar")
+            Class.forName("android.app.StatusBarManager")
+                .getMethod(method)
+                .invoke(service)
+        } catch (e: Exception) {
+            EventLog.log(this, "DEBUG", "system_panel_unavailable;method=$method")
+        }
+    }
+
+    /**
+     * מסך האפליקציות-הפתוחות. אין לזה API ציבורי כלל, גם לא מוסתר
+     * ב-StatusBarManager — צריך לפנות ישירות ל-IStatusBarService.
+     * זו המחווה היחידה מהשש שאני לא יכול להבטיח שתעבוד.
+     */
+    private fun toggleRecentApps() {
+        try {
+            val serviceManager = Class.forName("android.os.ServiceManager")
+            val binder = serviceManager
+                .getMethod("getService", String::class.java)
+                .invoke(null, "statusbar")
+            val stub = Class.forName("com.android.internal.statusbar.IStatusBarService\$Stub")
+            val service = stub
+                .getMethod("asInterface", Class.forName("android.os.IBinder"))
+                .invoke(null, binder)
+            service?.javaClass?.getMethod("toggleRecentApps")?.invoke(service)
+        } catch (e: Exception) {
+            EventLog.log(this, "DEBUG", "recent_apps_unavailable")
         }
     }
 

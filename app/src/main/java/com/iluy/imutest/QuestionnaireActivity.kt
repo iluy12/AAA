@@ -417,17 +417,7 @@ class QuestionnaireActivity : Activity() {
             )
             layoutParams = lp
         }
-        practicePad.setOnTouchListener { view, event ->
-            handlePracticeTouch(view, event) {
-                EventLog.log(this, "INFO", "x_gesture_practice_success")
-                statusText.text = "✓ נקלט"
-                practicePad.text = "✓"
-                continueButton.visibility = View.VISIBLE
-            }
-        }
-        container.addView(practicePad)
-
-        container.addView(Button(this).apply {
+        val skipButton = Button(this).apply {
             text = "המשך בלי תרגול"
             val lp = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
@@ -438,7 +428,22 @@ class QuestionnaireActivity : Activity() {
                 EventLog.log(this@QuestionnaireActivity, "INFO", "x_gesture_practice_skipped")
                 renderRecordingStep()
             }
-        })
+        }
+
+        practicePad.setOnTouchListener { view, event ->
+            handlePracticeTouch(view, event) {
+                EventLog.log(this, "INFO", "x_gesture_practice_success")
+                statusText.text = "✓ נקלט בהצלחה"
+                practicePad.text = "✓"
+                // "המשך" מחליף את "המשך בלי תרגול" במקום להצטרף אליו —
+                // אחרי שהתרגול הצליח, "בלי תרגול" כבר לא אפשרות רלוונטית
+                // וזה רק מבלבל.
+                skipButton.visibility = View.GONE
+                continueButton.visibility = View.VISIBLE
+            }
+        }
+        container.addView(practicePad)
+        container.addView(skipButton)
         container.addView(continueButton)
 
         setContentView(scroll)

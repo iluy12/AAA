@@ -141,6 +141,10 @@ class MainActivity : Activity() {
             container.addView(display)
         }
 
+        // דרך-חזרה גלויה. כשעילוי היא מסך-הבית זה חוזר למסך-השעון;
+        // אחרת זה סוגר את האפליקציה — בשני המקרים יציאה צפויה.
+        container.addView(secondaryButton("חזרה") { finish() })
+
         container.addView(TextView(this).apply {
             text = "גרסה ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) · נבנה ${BuildConfig.BUILD_TIMESTAMP}"
             textSize = 9f

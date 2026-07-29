@@ -104,6 +104,21 @@ class HelpMenuActivity : Activity() {
             CallHelper.startCall(this, source = "חיוג מיידי (מ: $source)")
         })
 
+        // כל מסך חייב דרך-חזרה גלויה. מכוון-בעיצוב שונה משאר הכפתורים
+        // (טקסט בלבד) כדי שלא ייראה ככלי-סיוע נוסף.
+        container.addView(Button(this).apply {
+            text = "חזרה"
+            setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+            setBackgroundColor(Color.TRANSPARENT)
+            textSize = 13f
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            lp.topMargin = 20
+            layoutParams = lp
+            setOnClickListener { finish() }
+        })
+
         return scroll
     }
 
