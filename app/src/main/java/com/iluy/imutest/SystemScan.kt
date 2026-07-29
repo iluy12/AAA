@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.Uri
 
 /**
@@ -64,10 +65,43 @@ object SystemScan {
     fun run(context: Context) {
         val log = { detail: String -> EventLog.log(context, "SCAN", detail) }
         log("scan_start")
+        runCatching { scanLocation(context, log) }.onFailure { log("scan_location_failed;${it.javaClass.simpleName}") }
         runCatching { scanPackages(context, log) }.onFailure { log("scan_packages_failed;${it.javaClass.simpleName}") }
         runCatching { scanSettings(context, log) }.onFailure { log("scan_settings_failed;${it.javaClass.simpleName}") }
         runCatching { scanCallHandlers(context, log) }.onFailure { log("scan_call_failed;${it.javaClass.simpleName}") }
         log("scan_done")
+    }
+
+    /**
+     * האם יש GPS.
+     *
+     * ⚠️ **זו תיקון לבדיקה קודמת שהסתכלה במקום הלא נכון.** אינוונטר
+     * החיישנים עובר על `SensorManager`, ו-GPS **לעולם אינו מופיע שם** —
+     * מיקום הוא שירות נפרד (`LocationManager`) ולא חיישן. המסקנה
+     * "אין GPS במכשיר" נגזרה מרשימה שמעולם לא יכלה להכיל אותו.
+     *
+     * `getAllProviders` אינו דורש הרשאה — הוא מדווח מה **קיים**, לא
+     * היכן המכשיר נמצא. לשימוש אמיתי במיקום תידרש הרשאת ACCESS_FINE_LOCATION,
+     * וזו החלטה נפרדת שתתקבל אחרי שנדע מה יש כאן.
+     */
+    private fun scanLocation(context: Context, log: (String) -> Unit) {
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        if (lm == null) {
+            log("location;service=null")
+            return
+        }
+        val all = lm.allProviders
+        log("location;providers=${all.joinToString("|")}")
+        for (p in all) {
+            val enabled = runCatching { lm.isProviderEnabled(p) }.getOrNull()
+            log("  provider;name=$p;enabled=$enabled")
+        }
+        val pm = context.packageManager
+        log(
+            "location_features;gps=${pm.hasSystemFeature(PackageManager.FEATURE_LOCATION_GPS)};" +
+                "network=${pm.hasSystemFeature(PackageManager.FEATURE_LOCATION_NETWORK)};" +
+                "any=${pm.hasSystemFeature(PackageManager.FEATURE_LOCATION)}"
+        )
     }
 
     /**
