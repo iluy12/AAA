@@ -84,6 +84,13 @@
             android:exported="false"
             android:label="@string/app_name" />
 
+        <!-- מגירת-אפליקציות. חובה כשעילוי משמשת מסך-בית: בלעדיה אין
+             גישה לדפדפן, להגדרות ולשאר האפליקציות. -->
+        <activity
+            android:name=".AppDrawerActivity"
+            android:exported="false"
+            android:label="@string/app_name" />
+
         <service
             android:name=".TapDetectorService"
             android:exported="false"

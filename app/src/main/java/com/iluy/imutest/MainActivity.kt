@@ -108,6 +108,10 @@ class MainActivity : Activity() {
             RiskFlowActivity.launch(this, source = "כפתור 'נפלתי'")
         })
 
+        container.addView(bigButton("כל האפליקציות") {
+            AppDrawerActivity.launch(this)
+        })
+
         addHomeAppSection(container)
 
         if (DebugConfig.DEBUG_TAG_ENABLED) {
