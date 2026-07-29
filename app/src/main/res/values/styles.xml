@@ -30,9 +30,19 @@
     <style name="WatchFaceTheme" parent="Theme.AppCompat.NoActionBar">
         <item name="android:fontFamily">sans-serif</item>
         <item name="android:windowBackground">@android:color/black</item>
-        <item name="android:statusBarColor">@android:color/black</item>
-        <item name="android:navigationBarColor">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>
+        <!--
+          ניסיון שלישי לפס העליון. statusBarColor שחור לא תפס — לא כדגל
+          בזמן-ריצה ולא דרך ערכת-נושא, כנראה כי המערכת של היצרן מתעלמת
+          ממנו. כאן במקום לצבוע אותו הופכים אותו לשקוף ומציירים את
+          התוכן מתחתיו, כך שהרקע השחור שלנו נראה מבעדו.
+
+          זה גם עדיף על מסך-מלא: הפס נשאר קיים ומשיכת-ההתראות ממשיכה
+          לעבוד, בניגוד ל-FLAG_FULLSCREEN שנעל אותנו קודם.
+        -->
+        <item name="android:windowTranslucentStatus">true</item>
     </style>
 
     <style name="IluyButton">

@@ -86,27 +86,14 @@ class WatchFaceActivity : Activity() {
      *
      * צביעה בשחור פותרת את הפס האפור בלי לקחת שום יכולת מהמערכת.
      */
+    /**
+     * הפס העליון מטופל כולו ב-WatchFaceTheme (שקוף, תוכן מצויר מתחתיו).
+     * הדגלים בזמן-ריצה שהיו כאן קודם רק התנגשו איתו — הם ניסו לצבוע
+     * שחור אטום בזמן שערכת-הנושא מבקשת שקיפות.
+     */
     private fun blendStatusBar() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return
-
-        // statusBarColor נכנס לתוקף רק כשהדגל הזה מוגדר ו-TRANSLUCENT
-        // כבוי. בלעדיו הצבע נקבע והמערכת פשוט מתעלמת ממנו — בדיוק מה
-        // שקרה, ולכן הפס נשאר אפור.
-        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
-        @Suppress("DEPRECATION")
-        window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
-
-        window.statusBarColor = Color.BLACK
-        window.navigationBarColor = Color.BLACK
-
-        // ערכת-הנושא בהירה, ולכן המערכת עלולה לצייר אייקונים כהים —
-        // בלתי-נראים על שחור. מכבים את דגל-הבהיר כדי שיישארו לבנים.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility =
-                window.decorView.systemUiVisibility and
-                    View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
-        }
+        window.addFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
     }
 
     private fun buildLayout(): View {
@@ -210,6 +197,19 @@ class WatchFaceActivity : Activity() {
                 val root = window.decorView
                 val minSide = Math.min(root.width, root.height)
                 if (minSide <= 0) return
+
+                // כל תנועה נרשמת, גם כזו שנדחתה. בלי זה אי-אפשר להבדיל
+                // בין "המחווה לא זוהתה" לבין "האירוע בכלל לא הגיע אלינו"
+                // כי המערכת חטפה אותו — ובדיוק זה ההבדל שצריך עכשיו.
+                if (DebugConfig.DEBUG_TAG_ENABLED) {
+                    EventLog.log(
+                        this, "DEBUG",
+                        "stroke;dx=${dx.toInt()};dy=${dy.toInt()};len=${length.toInt()};" +
+                            "min_needed=${(minSide * DebugConfig.X_GESTURE_MIN_STROKE_FRACTION).toInt()};" +
+                            "from=${downX.toInt()},${downY.toInt()};screen=${root.width}x${root.height}"
+                    )
+                }
+
                 if (length < minSide * DebugConfig.X_GESTURE_MIN_STROKE_FRACTION) return
 
                 val shorterAxis = Math.min(Math.abs(dx), Math.abs(dy))
@@ -256,19 +256,26 @@ class WatchFaceActivity : Activity() {
         val fromRight = downX > width / 2f
         val horizontal = Math.abs(dx) > Math.abs(dy)
 
-        if (horizontal) {
-            if (dx < 0) AppDrawerActivity.launch(this) else openMenu()
-            return
+        val action = when {
+            horizontal && dx < 0 -> "apps"
+            horizontal -> "menu"
+            dy > 0 && downY < height * 0.3f && fromRight -> "notifications"
+            dy > 0 && downY < height * 0.3f -> "quick_settings"
+            dy < 0 && downY > height * 0.7f && fromRight -> "recents"
+            dy < 0 && downY > height * 0.7f -> "info"
+            // החלקה אנכית שלא התחילה קרוב מספיק לקצה. נרשמת בשמה כדי
+            // שנדע שזה מה שקרה ולא נחפש את הבעיה במקום אחר.
+            else -> "vertical_wrong_zone"
         }
+        EventLog.log(this, "DEBUG", "swipe;action=$action")
 
-        if (dy > 0 && downY < height * 0.3f) {
-            if (fromRight) systemPanel("expandNotificationsPanel")
-            else systemPanel("expandSettingsPanel")
-            return
-        }
-
-        if (dy < 0 && downY > height * 0.7f) {
-            if (fromRight) toggleRecentApps() else InfoActivity.launch(this)
+        when (action) {
+            "apps" -> AppDrawerActivity.launch(this)
+            "menu" -> openMenu()
+            "notifications" -> systemPanel("expandNotificationsPanel")
+            "quick_settings" -> systemPanel("expandSettingsPanel")
+            "recents" -> toggleRecentApps()
+            "info" -> InfoActivity.launch(this)
         }
     }
 
