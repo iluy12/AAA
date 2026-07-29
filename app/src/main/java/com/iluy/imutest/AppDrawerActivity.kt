@@ -80,28 +80,34 @@ class AppDrawerActivity : Activity() {
     private data class LaunchableApp(val label: String, val packageName: String)
 
     /**
-     * targetSdk 28 — לכן אין כאן מגבלות נראות-חבילות של אנדרואיד 11+
-     * ואין צורך ב-<queries> או בהרשאה מיוחדת.
+     * עוברים על **כל החבילות המותקנות** ובודקים למי מהן יש כוונת-הפעלה,
+     * במקום לשאול מי מכריז על CATEGORY_LAUNCHER.
+     *
+     * הסיבה: אפליקציות של יצרני שעונים לרוב לא מכריזות על הקטגוריה הזו
+     * — הלאנצ'ר שלהם מפעיל אותן ישירות — ולכן חיפוש לפי הכרזה החזיר
+     * רשימה כמעט ריקה, ואיתה נחסמה הגישה לאפליקציית הדופק ולהגדרות.
+     *
+     * targetSdk 28, ולכן אין מגבלות נראות-חבילות של אנדרואיד 11+ ואין
+     * צורך בהרשאה מיוחדת.
      */
-    private fun loadLaunchableApps(): List<LaunchableApp> {
-        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        return try {
-            packageManager.queryIntentActivities(intent, 0)
-                .mapNotNull { info ->
-                    val pkg = info.activityInfo?.packageName ?: return@mapNotNull null
-                    // מסתירים את עצמנו — כבר נמצאים כאן
-                    if (pkg == packageName) return@mapNotNull null
-                    LaunchableApp(
-                        label = info.loadLabel(packageManager)?.toString() ?: pkg,
-                        packageName = pkg
-                    )
-                }
-                .distinctBy { it.packageName }
-                .sortedBy { it.label }
-        } catch (e: Exception) {
-            EventLog.log(this, "ERROR", "app_drawer_query_failed")
-            emptyList()
-        }
+    private fun loadLaunchableApps(): List<LaunchableApp> = try {
+        packageManager.getInstalledApplications(0)
+            .mapNotNull { app ->
+                if (app.packageName == packageName) return@mapNotNull null
+                // הקריטריון היחיד שבאמת חשוב: אפשר להפעיל אותה?
+                packageManager.getLaunchIntentForPackage(app.packageName)
+                    ?: return@mapNotNull null
+                LaunchableApp(
+                    label = packageManager.getApplicationLabel(app)?.toString()
+                        ?: app.packageName,
+                    packageName = app.packageName
+                )
+            }
+            .distinctBy { it.packageName }
+            .sortedBy { it.label }
+    } catch (e: Exception) {
+        EventLog.log(this, "ERROR", "app_drawer_query_failed")
+        emptyList()
     }
 
     private fun appButton(app: LaunchableApp): Button = Button(this).apply {
