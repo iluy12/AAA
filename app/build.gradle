@@ -16,8 +16,11 @@ android {
         // avoids scoped-storage / background-service restrictions that
         // Android 29+ introduces, which would complicate this simple test.
         targetSdk 28
-        versionCode 2
-        versionName "1.0-v1"
+        // versionCode עולה עם כל ריצת CI. קודם הוא היה קבוע על 2, ולכן
+        // כל הגרסאות נראו זהות לאנדרואיד ולא היה שום סימן חיצוני
+        // שהתקנה בכלל תפסה. מחוץ ל-CI נופל ל-1.
+        versionCode (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+        versionName "1.0-build-${System.getenv("GITHUB_RUN_NUMBER") ?: "local"}"
 
         // גלוי במסך הבית — כדי לדעת בוודאות איזו גרסה מותקנת בפועל בלי לנחש.
         buildConfigField "String", "BUILD_TIMESTAMP", "\"${new Date().format("yyyy-MM-dd HH:mm")}\""

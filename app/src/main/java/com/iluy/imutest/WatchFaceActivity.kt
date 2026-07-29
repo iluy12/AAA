@@ -132,6 +132,20 @@ class WatchFaceActivity : Activity() {
         column.addView(timeText)
         column.addView(dateText)
         column.addView(feedbackText)
+
+        // גרסה על מסך-השעון עצמו, לא רק במסך הראשי. נוסף אחרי שנתקעת
+        // בלי דרך לדעת אם ההתקנה בכלל תפסה — שורת-גרסה שאפשר להגיע
+        // אליה רק דרך מסך אחר לא עוזרת כשהמסך ההוא חסום.
+        if (DebugConfig.DEBUG_TAG_ENABLED) {
+            column.addView(TextView(this).apply {
+                text = "build ${BuildConfig.VERSION_CODE} · ${BuildConfig.BUILD_TIMESTAMP}"
+                textSize = 9f
+                gravity = Gravity.CENTER
+                setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+                setPadding(0, 14, 0, 0)
+            })
+        }
+
         root.addView(column)
 
         // דרך-מוצא לתפריט. חובה, לא נוחות: מסך-בית מחליף את הלאנצ'ר של

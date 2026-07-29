@@ -93,8 +93,9 @@ class AppDrawerActivity : Activity() {
     private fun loadLaunchableApps(): List<LaunchableApp> = try {
         packageManager.getInstalledApplications(0)
             .mapNotNull { app ->
-                if (app.packageName == packageName) return@mapNotNull null
-                // הקריטריון היחיד שבאמת חשוב: אפשר להפעיל אותה?
+                // עילוי **כן** מופיעה כאן. בלאנצ'ר רגיל היה הגיוני להסתיר
+                // את עצמנו, אבל כאן מסך-השעון הוא הבית והמגירה היא הדרך
+                // להגיע למסך הראשי — הסתרתה חסמה בדיוק את מה שצריך.
                 packageManager.getLaunchIntentForPackage(app.packageName)
                     ?: return@mapNotNull null
                 LaunchableApp(
