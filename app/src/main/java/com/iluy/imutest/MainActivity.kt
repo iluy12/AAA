@@ -311,7 +311,13 @@ class MainActivity : Activity() {
         display.visibility = android.view.View.VISIBLE
 
         LogUploader.upload(this) { result ->
-            display.text = result
+            // הכתובת מוצגת גדולה ובמונחה — היא נועדה להיקרא ולהיאמר,
+            // ותו אחד שגוי הופך אותה לחסרת-ערך. אות אחת שהועתקה לא נכון
+            // כבר עלתה לנו סבב.
+            val slug = result.substringAfterLast('/')
+            display.text = if (result.startsWith("http")) "$slug\n\n$result" else result
+            display.textSize = if (result.startsWith("http")) 22f else 14f
+            display.setTextColor(android.graphics.Color.BLACK)
             EventLog.log(this, "INFO", "log_uploaded;result=$result")
         }
     }
