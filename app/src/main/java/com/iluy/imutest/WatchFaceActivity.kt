@@ -358,10 +358,17 @@ class WatchFaceActivity : Activity() {
         when (report.outcome) {
             OvercomingReporter.Outcome.ESCALATED,
             OvercomingReporter.Outcome.OFFER_MENTOR ->
-                RiskFlowActivity.launch(
-                    this, source = source,
-                    variant = RiskFlowActivity.VARIANT_SECOND_TAP_IN_HOUR
-                )
+                // בהשהיה, לא מיד: קודם הצגתי את החיזוק ופתחתי מסך מעליו
+                // באותו רגע, אז הוא הבזיק ונעלם. מי שהתגבר צריך להספיק
+                // לקרוא את המילה הטובה לפני שנפתח משהו אחר.
+                uiHandler.postDelayed({
+                    if (!isFinishing) {
+                        RiskFlowActivity.launch(
+                            this, source = source,
+                            variant = RiskFlowActivity.VARIANT_SECOND_TAP_IN_HOUR
+                        )
+                    }
+                }, DebugConfig.ENCOURAGEMENT_READ_MS)
             OvercomingReporter.Outcome.AT_PERSONAL_THRESHOLD,
             OvercomingReporter.Outcome.ACKNOWLEDGED,
             OvercomingReporter.Outcome.IGNORED_COOLDOWN -> {
@@ -377,7 +384,12 @@ class WatchFaceActivity : Activity() {
     private fun showFeedback(text: String) {
         feedbackText.text = text
         feedbackText.visibility = View.VISIBLE
-        uiHandler.postDelayed({ feedbackText.visibility = View.INVISIBLE }, 2_000L)
+        // נשאר על המסך לפחות עד שמסך ההסלמה נפתח, אחרת נוצר רגע ריק
+        // שבו החיזוק כבר נעלם ושום דבר עוד לא הופיע.
+        uiHandler.postDelayed(
+            { feedbackText.visibility = View.INVISIBLE },
+            DebugConfig.ENCOURAGEMENT_READ_MS + 400L
+        )
     }
 
     // ---------- שעון ----------
