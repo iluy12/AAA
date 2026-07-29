@@ -27,7 +27,32 @@ android {
         buildConfig true
     }
 
+    /**
+     * מפתח-חתימה קבוע, מוחזק ב-repo.
+     *
+     * בלעדיו כל ריצת CI מייצרת מפתח-דיבאג אקראי משלה (הרץ נוצר מאפס),
+     * ואנדרואיד מסרב להתקין גרסה חדשה מעל אפליקציה שנחתמה במפתח אחר —
+     * כלומר כל עדכון מחייב הסרה קודם. זה מה שיצר את הלולאה: כשעילוי היא
+     * מסך-הבית, הסרה דורשת לאנצ'ר, והלאנצ'ר הוא עילוי עצמה.
+     *
+     * ⚠️ מפתח-דיבאג בלבד, ובכוונה לא-סודי (בדיוק כמו debug.keystore
+     * הסטנדרטי של אנדרואיד, שסיסמתו "android" ידועה לכל). לגרסת-הפצה
+     * אמיתית חייבים מפתח נפרד שנשמר בסוד, לא כזה שיושב ב-repo ציבורי.
+     */
+    signingConfigs {
+        debug {
+            storeFile file('../debug.p12')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+            storeType 'PKCS12'
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
             minifyEnabled false
         }
