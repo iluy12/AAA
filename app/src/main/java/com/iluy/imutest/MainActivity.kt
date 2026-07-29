@@ -130,6 +130,9 @@ class MainActivity : Activity() {
             container.addView(secondaryButton("נקה לוג") {
                 clearLog()
             })
+            container.addView(secondaryButton("שלח לוג ← קבל כתובת") {
+                uploadLog()
+            })
 
             val display = TextView(this).apply {
                 textSize = 10f
@@ -250,6 +253,23 @@ class MainActivity : Activity() {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         clipboard?.setPrimaryClip(ClipData.newPlainText("iluy_events", full))
         Toast.makeText(this, "כל הלוג הועתק ללוח (${lines.size} שורות)", Toast.LENGTH_LONG).show()
+    }
+
+    /**
+     * מעלה את הלוג ומציג את הכתובת הקצרה על המסך, גדול וברור — היא
+     * נועדה להיקרא ולהיאמר, לא להיות מועתקת (העתקה על השעון הזה היא
+     * בדיוק מה שלא עובד).
+     */
+    private fun uploadLog() {
+        val display = logDisplay ?: return
+        display.text = "מעלה…"
+        display.textSize = 14f
+        display.visibility = android.view.View.VISIBLE
+
+        LogUploader.upload(this) { result ->
+            display.text = result
+            EventLog.log(this, "INFO", "log_uploaded;result=$result")
+        }
     }
 
     private fun clearLog() {

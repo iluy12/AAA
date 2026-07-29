@@ -19,6 +19,10 @@
          הרשאה רגילה, נענית אוטומטית. נדרשת רק כי החלפנו את הלאנצ'ר של
          היצרן ואיתו את המחוות שהוא סיפק. -->
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+    <!-- ⚠️ נדרש רק להעלאת הלוג לבדיקות (LogUploader). האפליקציה עצמה
+         לא צריכה רשת — כל האחסון מקומי. להסיר יחד עם כפתור שליחת-הלוג
+         לפני הפצה למשתמשים. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="false"

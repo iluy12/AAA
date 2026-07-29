@@ -60,6 +60,7 @@ class TapDetectorService : Service(), SensorEventListener {
     private var hrLastSampleMs: Long? = null
     private var hrIntervalSumMs = 0L
     private var hrIntervalCountInWindow = 0
+    private var hrSamplesSinceLastLog = 0
     private var hrDiagnosticStarted = false
     private val hrDiagnosticHandler = Handler(Looper.getMainLooper())
     private val hrDiagnosticSummaryRunnable = object : Runnable {
@@ -217,7 +218,25 @@ class TapDetectorService : Service(), SensorEventListener {
                 val hr = event.values.getOrNull(0) ?: 0f
                 wornState = hr > 0f
                 if (DebugConfig.DEBUG_TAG_ENABLED) {
-                    EventLog.log(this, "DEBUG", "hr_sample;value=${"%.1f".format(hr)}")
+                    // ⚠️ לא רושמים כל מדגם. החיישן מדווח ~3 פעמים בשנייה,
+                    // כלומר כ-10,000 שורות בשעה — זה מה שהפך את הלוג
+                    // לבלתי-ניתן להעתקה על המכשיר. סיכום הדקה נותן את אותו
+                    // מידע אבחוני, ודגימה אחת ל-30 נשמרת רק כדי לראות
+                    // ערכים גולמיים לדוגמה.
+                    hrSamplesSinceLastLog++
+                    if (hrSamplesSinceLastLog >= 30) {
+                        hrSamplesSinceLastLog = 0
+                        // נמדד גם לבוש וגם לא: values[0] מחזיר 0.0 או ~10^21,
+                        // כלומר לא דופק. לפני שפוסלים את החיישן — בודקים אם
+                        // הערך יושב בכלל בתא אחר, ומה ה-accuracy מדווח.
+                        // דרייברים זולים לפעמים לא מכבדים את חוזה ה-API.
+                        val slots = event.values.joinToString(",") { "%.1f".format(it) }
+                        EventLog.log(
+                            this, "DEBUG",
+                            "hr_sample;value=${"%.1f".format(hr)};all_slots=[$slots];" +
+                                "count=${event.values.size};accuracy=${event.accuracy}"
+                        )
+                    }
                     val now = System.currentTimeMillis()
                     hrSampleCountInWindow++
                     if (hr < hrMinValueInWindow) hrMinValueInWindow = hr

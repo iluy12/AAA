@@ -26,6 +26,11 @@ object OvercomingReporter {
             return Outcome.IGNORED_COOLDOWN
         }
 
+        // נרשם ללוח לפני כל שאר הלוגיקה: התגברות נספרת גם כשהיא מסלימה,
+        // כי גם היא התגברות. (סוכם עם נבו — לא רק הראשונה בשעה נספרת.)
+        val todayCount = CalendarStore.recordOvercoming(context)
+        EventLog.log(context, "INFO", "overcoming_recorded;today_total=$todayCount")
+
         val standbyUntil = LocalStore.getTapStandbyUntil(context)
 
         return if (now < standbyUntil) {

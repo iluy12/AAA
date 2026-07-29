@@ -59,12 +59,7 @@ class InfoActivity : Activity() {
             setPadding(0, 8, 0, 24)
         })
 
-        container.addView(TextView(this).apply {
-            text = "לוח ההתגברויות יופיע כאן"
-            textSize = 12f
-            gravity = Gravity.CENTER
-            setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
-        })
+        renderCalendar(container)
 
         container.addView(Button(this).apply {
             text = "חזרה"
@@ -77,5 +72,85 @@ class InfoActivity : Activity() {
         })
 
         setContentView(scroll)
+    }
+
+    /**
+     * לוח 14 הימים האחרונים.
+     *
+     * יום מעורב מציג **את שניהם** — ירוק ואדום זה לצד זה — ולא "אדום
+     * מנצח". זו הייתה החלטה מפורשת: להתגברויות של יום שהיה בו גם נופל
+     * יש ערך בפני עצמן, והעלמתן הייתה מוחקת בדיוק את המאמץ שכן נעשה.
+     */
+    private fun renderCalendar(container: LinearLayout) {
+        val days = CalendarStore.recentDays(this, 14)
+
+        container.addView(TextView(this).apply {
+            text = "14 הימים האחרונים"
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
+            setPadding(0, 0, 0, 10)
+        })
+
+        if (days.all { it.isEmpty }) {
+            container.addView(TextView(this).apply {
+                text = "עוד אין מה להציג"
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+            })
+            return
+        }
+
+        val labelFormat = SimpleDateFormat("d/M", Locale.US)
+        val parseFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+
+        for (day in days) {
+            if (day.isEmpty) continue
+
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                lp.topMargin = 6
+                layoutParams = lp
+            }
+
+            val label = try {
+                labelFormat.format(parseFormat.parse(day.date) ?: Date())
+            } catch (e: Exception) {
+                day.date
+            }
+
+            row.addView(TextView(this).apply {
+                text = label
+                textSize = 12f
+                setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+                layoutParams = LinearLayout.LayoutParams(70, LinearLayout.LayoutParams.WRAP_CONTENT)
+            })
+
+            if (day.overcomings > 0) {
+                row.addView(chip("${day.overcomings} התגברויות", R.color.emerald_primary))
+            }
+            if (day.fallCategory != null) {
+                row.addView(chip(day.fallCategory, R.color.danger))
+            }
+
+            container.addView(row)
+        }
+    }
+
+    private fun chip(label: String, colorRes: Int): TextView = TextView(this).apply {
+        text = label
+        textSize = 12f
+        setTextColor(android.graphics.Color.WHITE)
+        setBackgroundColor(ContextCompat.getColor(context, colorRes))
+        setPadding(10, 4, 10, 4)
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        lp.marginEnd = 6
+        layoutParams = lp
     }
 }
