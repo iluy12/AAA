@@ -50,33 +50,37 @@ class TapDetectorService : Service(), SensorEventListener {
     private var isListening = false
 
 
-    // --- אבחון-דופק (בדיקה אמפירית: TYPE_HEART_RATE מדווח ברקע באופן
-    // רציף על החומרה הזו, או רק על-דרישה? תלוי-חומרה, לא ידוע מראש —
-    // ראו סעיף 6 במסמך: פיצ'ר-החיזוי צריך את זה כתשתית). מאחורי
-    // DEBUG_TAG_ENABLED כמו שאר האבחון, כמו מקבילו אצל ה-accelerometer.
+    // --- ניטור-דופק. השאלה ששאלנו כאן ("האם TYPE_HEART_RATE מדווח ברקע
+    // ברציפות, או רק על-דרישה?") נענתה: ברציפות, ~3 דגימות בשנייה. גם
+    // הערכים ה"שבורים" פוענחו — ראו HeartRate. לכן זה כבר לא אבחון אלא
+    // מדידה, והסיכום מדווח BPM אמיתי במקום floats גולמיים.
     private var hrSampleCountInWindow = 0
-    private var hrMinValueInWindow = Float.MAX_VALUE
-    private var hrMaxValueInWindow = Float.MIN_VALUE
+    private var hrNoContactCountInWindow = 0
+    private var hrMinBpmInWindow = Int.MAX_VALUE
+    private var hrMaxBpmInWindow = Int.MIN_VALUE
     private var hrLastSampleMs: Long? = null
     private var hrIntervalSumMs = 0L
     private var hrIntervalCountInWindow = 0
     private var hrSamplesSinceLastLog = 0
     private var hrDiagnosticStarted = false
+    private val hrSmoother = HeartRate.Smoother()
     private val hrDiagnosticHandler = Handler(Looper.getMainLooper())
     private val hrDiagnosticSummaryRunnable = object : Runnable {
         override fun run() {
-            val hasSamples = hrSampleCountInWindow > 0
+            val hasBpm = hrMinBpmInWindow != Int.MAX_VALUE
             val avgIntervalMs = if (hrIntervalCountInWindow > 0) hrIntervalSumMs / hrIntervalCountInWindow else -1L
             EventLog.log(
                 this@TapDetectorService, "INFO",
-                "hr_diagnostic_summary;samples=$hrSampleCountInWindow;" +
-                    "min=${if (hasSamples) "%.1f".format(hrMinValueInWindow) else "—"};" +
-                    "max=${if (hasSamples) "%.1f".format(hrMaxValueInWindow) else "—"};" +
+                "hr_summary;samples=$hrSampleCountInWindow;no_contact=$hrNoContactCountInWindow;" +
+                    "min_bpm=${if (hasBpm) hrMinBpmInWindow.toString() else "—"};" +
+                    "max_bpm=${if (hasBpm) hrMaxBpmInWindow.toString() else "—"};" +
+                    "now_bpm=${hrSmoother.current() ?: -1};" +
                     "avg_interval_ms=$avgIntervalMs"
             )
             hrSampleCountInWindow = 0
-            hrMinValueInWindow = Float.MAX_VALUE
-            hrMaxValueInWindow = Float.MIN_VALUE
+            hrNoContactCountInWindow = 0
+            hrMinBpmInWindow = Int.MAX_VALUE
+            hrMaxBpmInWindow = Int.MIN_VALUE
             hrIntervalSumMs = 0L
             hrIntervalCountInWindow = 0
             hrDiagnosticHandler.postDelayed(this, 60_000L)
@@ -215,37 +219,46 @@ class TapDetectorService : Service(), SensorEventListener {
                 wornState = (event.values.getOrNull(0) ?: 1f) >= 0.5f
             }
             Sensor.TYPE_HEART_RATE -> {
-                val hr = event.values.getOrNull(0) ?: 0f
-                wornState = hr > 0f
+                val raw = event.values.getOrNull(0) ?: 0f
+                val bpm = HeartRate.decodeBpm(raw)
+                // ערך גולמי 0 = אין מגע עם העור, ולכן זה מדד-לבישה אמיתי.
+                // קודם ההשוואה הייתה hr > 0f, שהתקיימה תמיד כי הערכים
+                // ה"שבורים" היו עצומים — כלומר לא נמדד כאן כלום בפועל.
+                wornState = bpm != null
+                bpm?.let { hrSmoother.add(it) }
+
                 if (DebugConfig.DEBUG_TAG_ENABLED) {
-                    // ⚠️ לא רושמים כל מדגם. החיישן מדווח ~3 פעמים בשנייה,
-                    // כלומר כ-10,000 שורות בשעה — זה מה שהפך את הלוג
-                    // לבלתי-ניתן להעתקה על המכשיר. סיכום הדקה נותן את אותו
-                    // מידע אבחוני, ודגימה אחת ל-30 נשמרת רק כדי לראות
-                    // ערכים גולמיים לדוגמה.
-                    hrSamplesSinceLastLog++
-                    if (hrSamplesSinceLastLog >= 30) {
-                        hrSamplesSinceLastLog = 0
-                        // נמדד גם לבוש וגם לא: values[0] מחזיר 0.0 או ~10^21,
-                        // כלומר לא דופק. לפני שפוסלים את החיישן — בודקים אם
-                        // הערך יושב בכלל בתא אחר, ומה ה-accuracy מדווח.
-                        // דרייברים זולים לפעמים לא מכבדים את חוזה ה-API.
-                        val slots = event.values.joinToString(",") { "%.1f".format(it) }
-                        EventLog.log(
-                            this, "DEBUG",
-                            "hr_sample;value=${"%.1f".format(hr)};all_slots=[$slots];" +
-                                "count=${event.values.size};accuracy=${event.accuracy}"
-                        )
-                    }
                     val now = System.currentTimeMillis()
                     hrSampleCountInWindow++
-                    if (hr < hrMinValueInWindow) hrMinValueInWindow = hr
-                    if (hr > hrMaxValueInWindow) hrMaxValueInWindow = hr
+                    if (bpm == null) {
+                        hrNoContactCountInWindow++
+                    } else {
+                        if (bpm < hrMinBpmInWindow) hrMinBpmInWindow = bpm
+                        if (bpm > hrMaxBpmInWindow) hrMaxBpmInWindow = bpm
+                    }
                     hrLastSampleMs?.let { last ->
                         hrIntervalSumMs += (now - last)
                         hrIntervalCountInWindow++
                     }
                     hrLastSampleMs = now
+
+                    // ⚠️ לא רושמים כל מדגם. החיישן מדווח ~3 פעמים בשנייה,
+                    // כלומר כ-10,000 שורות בשעה — זה מה שהפך את הלוג
+                    // לבלתי-ניתן להעתקה על המכשיר. סיכום הדקה נותן את
+                    // התמונה, ודגימה אחת ל-30 היא רק לביקורת.
+                    //
+                    // הערך הגולמי נשאר בלוג לצד המפוענח בכוונה: הפענוח הוא
+                    // הנדסה-לאחור של דרייבר, ואם היצרן ישנה את המבנה נרצה
+                    // את הביטים המקוריים כדי לפענח מחדש — בלי עוד סבב שדה.
+                    hrSamplesSinceLastLog++
+                    if (hrSamplesSinceLastLog >= 30) {
+                        hrSamplesSinceLastLog = 0
+                        EventLog.log(
+                            this, "DEBUG",
+                            "hr_sample;bpm=${bpm ?: -1};smoothed=${hrSmoother.current() ?: -1};" +
+                                "raw=${"%.1f".format(raw)};accuracy=${event.accuracy}"
+                        )
+                    }
                 }
             }
         }
