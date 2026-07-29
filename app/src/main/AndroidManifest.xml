@@ -15,10 +15,6 @@
     <uses-permission android:name="android.permission.BODY_SENSORS" />
     <!-- התראת "עילוי שלחו לך סרטון" -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- החלקה מטה על מסך-השעון פותחת את מגירת-ההתראות. הרשאה רגילה,
-         נענית אוטומטית — נדרשת רק כי החלפנו את הלאנצ'ר של היצרן
-         ואיתו את המחווה הזו. -->
-    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
 
     <application
         android:allowBackup="false"

@@ -165,12 +165,9 @@ class WatchFaceActivity : Activity() {
         }
         root.addView(menuDot)
 
-        root.setOnTouchListener { view, event -> handleTouch(view, event) }
-        // לחיצה ארוכה בכל מקום — דרך-מוצא שנייה, למקרה שהנקודה קטנה מדי
-        root.setOnLongClickListener {
-            openMenu()
-            true
-        }
+        // אין כאן מאזין-מגע על השורש בכוונה — הוא היה צורך את האירועים
+        // ומבטל את מחוות המערכת. ה-✕ מזוהה ב-dispatchTouchEvent, שרק
+        // מסתכל ומעביר הלאה.
         return root
     }
 
@@ -183,33 +180,41 @@ class WatchFaceActivity : Activity() {
 
     /**
      * ✕ = שני קווים אלכסוניים בכיוונים מנוגדים, בתוך חלון-זמן קצר.
-     * לא נדרש שיצטלבו בפועל — צירוף כזה לא קורה בטעות, ודרישת-הצטלבות
-     * רק הייתה מקשה בלי להוסיף ביטחון.
+     * לא נדרש שיצטלבו בפועל — צירוף כזה לא קורה בטעות.
+     *
+     * ## למה dispatchTouchEvent ולא OnTouchListener
+     *
+     * כאן רק **מסתכלים** על האירועים ומעבירים אותם הלאה כרגיל. מאזין-מגע
+     * רגיל היה צורך אותם, וכל מה שאנדרואיד עושה עם החלקות היה נעלם —
+     * וזו בדיוק הטעות שכבר עשינו פעם אחת כשהחלפנו את הלאנצ'ר בלי
+     * להחליף את מה שהוא סיפק. מחוות המערכת נשארות שלה; אנחנו רק
+     * מזהים ✕ שנצייר מעליהן.
      */
-    private fun handleTouch(view: View, event: MotionEvent): Boolean {
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        trackXGesture(ev)
+        return super.dispatchTouchEvent(ev)
+    }
+
+    private fun trackXGesture(event: MotionEvent) {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
-                downX = event.x
-                downY = event.y
-                return true
+                downX = event.rawX
+                downY = event.rawY
             }
             MotionEvent.ACTION_UP -> {
-                val dx = event.x - downX
-                val dy = event.y - downY
+                val dx = event.rawX - downX
+                val dy = event.rawY - downY
                 val length = Math.hypot(dx.toDouble(), dy.toDouble())
 
-                val minSide = Math.min(view.width, view.height)
-                val minLength = minSide * DebugConfig.X_GESTURE_MIN_STROKE_FRACTION
-                if (length < minLength) return true
+                val root = window.decorView
+                val minSide = Math.min(root.width, root.height)
+                if (minSide <= 0) return
+                if (length < minSide * DebugConfig.X_GESTURE_MIN_STROKE_FRACTION) return
 
-                // החלקה חד-צירית = ניווט, לא ✕. אלה מחליפות את מחוות
-                // הלאנצ'ר של היצרן שנעלמו כשהחלפנו אותו — בלי תחליף,
-                // מסך-הבית שלנו לוקח יכולות במקום להוסיף.
+                // רק אלכסון נחשב. החלקה אופקית או אנכית מתעלמים ממנה
+                // לגמרי — היא שייכת למערכת, לא לנו.
                 val shorterAxis = Math.min(Math.abs(dx), Math.abs(dy))
-                if (shorterAxis < length * DebugConfig.X_GESTURE_MIN_DIAGONAL_RATIO) {
-                    handleSwipe(dx, dy)
-                    return true
-                }
+                if (shorterAxis < length * DebugConfig.X_GESTURE_MIN_DIAGONAL_RATIO) return
 
                 val direction = if (dx * dy > 0) 1 else -1
                 val now = System.currentTimeMillis()
@@ -226,43 +231,7 @@ class WatchFaceActivity : Activity() {
                     lastStrokeDirection = direction
                     lastStrokeMs = now
                 }
-                return true
             }
-        }
-        return true
-    }
-
-    /**
-     * ניווט בהחלקה, תחליף למחוות הלאנצ'ר המקורי:
-     *   מטה  → מגירת ההתראות
-     *   מעלה → כל האפליקציות
-     *   הצידה → תפריט עילוי
-     */
-    private fun handleSwipe(dx: Float, dy: Float) {
-        val horizontal = Math.abs(dx) > Math.abs(dy)
-        when {
-            horizontal -> openMenu()
-            dy < 0 -> AppDrawerActivity.launch(this)
-            else -> expandNotifications()
-        }
-    }
-
-    /**
-     * פתיחת מגירת-ההתראות. אין ל-SDK דרך רשמית לעשות זאת, ולכן דרך
-     * רפלקציה על StatusBarManager — עם הרשאת EXPAND_STATUS_BAR שהיא
-     * הרשאה רגילה שנענית אוטומטית.
-     *
-     * אם היצרן חסם את זה, נופלים בשקט חזרה לתפריט שלנו במקום להשאיר
-     * את המשתמש בלי שום תגובה למחווה.
-     */
-    private fun expandNotifications() {
-        try {
-            val service = getSystemService("statusbar")
-            val manager = Class.forName("android.app.StatusBarManager")
-            manager.getMethod("expandNotificationsPanel").invoke(service)
-        } catch (e: Exception) {
-            EventLog.log(this, "DEBUG", "expand_notifications_unavailable")
-            openMenu()
         }
     }
 
