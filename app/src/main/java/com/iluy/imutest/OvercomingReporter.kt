@@ -18,9 +18,7 @@ object OvercomingReporter {
         /** הגיע לסף האישי שדיווח עליו בשאלון — חיזוק מורחב. */
         AT_PERSONAL_THRESHOLD,
         /** הכפיל את הסף — מוצע חיוג למלווה, לא מחויג אוטומטית. */
-        OFFER_MENTOR,
-        /** דיווח שני באותה שעה — מסלול ההסלמה הקיים. */
-        ESCALATED
+        OFFER_MENTOR
     }
 
     /** הטקסט שהמסך אמור להציג. נגזר כאן כדי שהקוראים לא ימציאו ניסוחים. */
@@ -89,26 +87,20 @@ object OvercomingReporter {
             return Report(Outcome.AT_PERSONAL_THRESHOLD, Encouragements.atThreshold(hint), todayCount)
         }
 
-        val standbyUntil = LocalStore.getTapStandbyUntil(context)
-
-        return if (now < standbyUntil) {
-            EventLog.log(context, "TRIGGER", "report_second_in_hour;source=$source")
-            if (launchUi) {
-                RiskFlowActivity.launch(
-                    context,
-                    source = source,
-                    variant = RiskFlowActivity.VARIANT_SECOND_TAP_IN_HOUR
-                )
-            }
-            Report(Outcome.ESCALATED, Encouragements.ordinary(), todayCount)
-        } else {
-            LocalStore.setTapStandbyUntil(context, now + DebugConfig.STANDBY_DURATION_MS)
-            EventLog.log(context, "TRIGGER", "report_first_in_hour;source=$source")
-            val message = Encouragements.ordinary()
-            if (launchUi) {
-                TapAcknowledgedActivity.launch(context, source = source, message = message)
-            }
-            Report(Outcome.ACKNOWLEDGED, message, todayCount)
+        // ---- התגברות רגילה ----
+        //
+        // הכלל השעתי ("דיווח שני באותה שעה מסלים") הוסר. הוא היה מספר
+        // שהמצאתי, והוא **הקדים תמיד את הסף האישי ולכן ניטרל אותו**:
+        // בלוג נראתה הסלמה בהתגברות מספר 2 בזמן שהסף שנבו דיווח עליו
+        // בשאלה 10 היה 5. שתי מערכות הסלמה מתחרות זו בזו, והאגרסיבית
+        // מביניהן ניצחה — למרות שהיא חסרת המשמעות מבין השתיים.
+        //
+        // מכאן ההסלמה נקבעת רק לפי הסף שהמשתמש דיווח עליו על עצמו.
+        EventLog.log(context, "TRIGGER", "report_acknowledged;source=$source")
+        val message = Encouragements.ordinary()
+        if (launchUi) {
+            TapAcknowledgedActivity.launch(context, source = source, message = message)
         }
+        return Report(Outcome.ACKNOWLEDGED, message, todayCount)
     }
 }
