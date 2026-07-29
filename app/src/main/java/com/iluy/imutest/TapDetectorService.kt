@@ -6,15 +6,18 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 
@@ -63,20 +66,41 @@ class TapDetectorService : Service(), SensorEventListener {
     private var hrIntervalCountInWindow = 0
     private var hrSamplesSinceLastLog = 0
     private var hrDiagnosticStarted = false
+    private var hrLastSummaryElapsedMs: Long? = null
     private val hrSmoother = HeartRate.Smoother()
     private val hrDiagnosticHandler = Handler(Looper.getMainLooper())
     private val hrDiagnosticSummaryRunnable = object : Runnable {
         override fun run() {
             val hasBpm = hrMinBpmInWindow != Int.MAX_VALUE
             val avgIntervalMs = if (hrIntervalCountInWindow > 0) hrIntervalSumMs / hrIntervalCountInWindow else -1L
+
+            // ⚠️ אורך-החלון האמיתי, ולא ה-60 שביקשנו. ההפרש בין השניים
+            // הוא כל הסיפור: ה-Handler נשען על uptimeMillis שקופא בשינה
+            // עמוקה, ולכן ריצה שנקבעה ל-60 שניות הגיעה בלוג של 2026-07-29
+            // באיחור של עד 1544 שניות. בלי המספר הזה בשורה עצמה חישבנו
+            // אותו ידנית מהפרשי חותמות-הזמן, וזה גם מה שהסתיר ש-
+            // avg_interval_ms אינו קצב החיישן אלא (אורך-חלון / samples).
+            val nowElapsed = SystemClock.elapsedRealtime()
+            val windowMs = hrLastSummaryElapsedMs?.let { nowElapsed - it } ?: -1L
+
             EventLog.log(
                 this@TapDetectorService, "INFO",
                 "hr_summary;samples=$hrSampleCountInWindow;no_contact=$hrNoContactCountInWindow;" +
                     "min_bpm=${if (hasBpm) hrMinBpmInWindow.toString() else "—"};" +
                     "max_bpm=${if (hasBpm) hrMaxBpmInWindow.toString() else "—"};" +
                     "now_bpm=${hrSmoother.current() ?: -1};" +
-                    "avg_interval_ms=$avgIntervalMs"
+                    "bpm_age_ms=${hrSmoother.ageMs()};" +
+                    "avg_interval_ms=$avgIntervalMs;" +
+                    // stalled = לא הגיעה אף דגימה בחלון. ⚠️ זה **לא** אותו
+                    // דבר כמו no_contact: כשהזרם מת, no_contact נשאר 0
+                    // בדיוק כמו כששעון תקין יושב על היד, ולכן שני המצבים
+                    // נראו זהים בלוג. wornState מחזיק בינתיים את ערכו
+                    // האחרון, כלומר "לבוש" — ולכן הוא לא אמין כאן.
+                    "stream=${if (hrSampleCountInWindow == 0) "stalled" else "live"};" +
+                    "window_ms=$windowMs;" +
+                    batteryFragment()
             )
+            hrLastSummaryElapsedMs = nowElapsed
             hrSampleCountInWindow = 0
             hrNoContactCountInWindow = 0
             hrMinBpmInWindow = Int.MAX_VALUE
@@ -85,6 +109,32 @@ class TapDetectorService : Service(), SensorEventListener {
             hrIntervalCountInWindow = 0
             hrDiagnosticHandler.postDelayed(this, 60_000L)
         }
+    }
+
+    /**
+     * `batt=<אחוז>;charging=<true|false>`, או `batt=-1` אם אין נתון.
+     *
+     * שתי השדות נקראים מאותו Intent יחיד ולא בשתי קריאות נפרדות, כדי
+     * שאחוז-הסוללה ומצב-הטעינה שבאותה שורה יתארו בוודאות את אותו רגע.
+     *
+     * ⚠️ `charging` אינו קישוט: בזמן טעינה אחוז-הסוללה חסר-משמעות לחישוב
+     * עלות, וצריך לפסול את הקטעים האלה בניתוח במקום להסיק מהם שהצריכה
+     * אפסית.
+     *
+     * דרך ה-sticky broadcast ולא דרך `BatteryManager.getIntProperty`: על
+     * המכשיר הזה כבר התברר פעמיים ש-API מוצהר מחזיר ערך שקרי (`Sensor.power`
+     * ו-`accuracy`, §9 במסמך), ו-EXTRA_LEVEL/EXTRA_SCALE הוא הנתיב הוותיק
+     * והנתמך ביותר. אינו דורש הרשאה ואינו רושם מאזין — `null` כמקלט מחזיר
+     * את ה-Intent הדביק האחרון מיידית.
+     */
+    private fun batteryFragment(): String {
+        val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            ?: return "batt=-1;charging=false"
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        val percent = if (level < 0 || scale <= 0) -1 else level * 100 / scale
+        val charging = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
+        return "batt=$percent;charging=$charging"
     }
 
     companion object {
