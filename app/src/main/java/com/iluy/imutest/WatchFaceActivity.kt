@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -468,4 +469,31 @@ class WatchFaceActivity : Activity() {
 
     /** מסך-בית לא אמור לצאת בחזרה לשום מקום. */
     override fun onBackPressed() { /* בכוונה ריק */ }
+
+    /**
+     * רישום כל לחיצת-מקש, כדי לגלות לאיזה קוד כפתור-הצד מתורגם ואם הוא
+     * מגיע אלינו בכלל. בלי זה כל מימוש של "כפתור הצד מחייג" הוא ניחוש.
+     *
+     * ⚠️ **לא צורך אף מקש.** הערך תמיד חוזר מ-`super`, כך שהתנהגות המכשיר
+     * לא משתנה בשום צורה. זו אינה קפדנות-יתר: כבר קרה כאן ש-`FLAG_FULLSCREEN`
+     * יחד עם החלפת הלאנצ'ר נעלו את נבו מחוץ למכשיר שלו, ובליעת מקש —
+     * במיוחד מקש-הפעלה — היא בדיוק אותו סוג תקלה. תמיד להשאיר דרך יציאה.
+     *
+     * נרשמת רק הלחיצה הראשונה (`repeatCount == 0`), אחרת מקש מוחזק היה
+     * ממלא את הלוג בעשרות שורות זהות ודוחק החוצה את סיכומי-הדופק.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (DebugConfig.DEBUG_TAG_ENABLED &&
+            event.action == KeyEvent.ACTION_DOWN &&
+            event.repeatCount == 0
+        ) {
+            EventLog.log(
+                this, "DEBUG",
+                "key;code=${event.keyCode};" +
+                    "name=${KeyEvent.keyCodeToString(event.keyCode)};" +
+                    "device=${event.deviceId};source=${event.source}"
+            )
+        }
+        return super.dispatchKeyEvent(event)
+    }
 }
