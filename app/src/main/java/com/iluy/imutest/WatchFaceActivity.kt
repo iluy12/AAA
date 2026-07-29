@@ -332,22 +332,25 @@ class WatchFaceActivity : Activity() {
     }
 
     private fun onXDrawn() {
-        val outcome = OvercomingReporter.record(
-            this, source = "✕ על מסך השעון", launchUi = false
-        )
+        val source = "✕ על מסך השעון"
+        val report = OvercomingReporter.record(this, source = source, launchUi = false)
 
-        when (outcome) {
-            OvercomingReporter.Outcome.ESCALATED -> {
-                // דיווח שני באותה שעה — כאן כן פותחים מסך, זו כל המטרה
-                showFeedback("נשמר")
+        // החיזוק תמיד מוצג על מסך-השעון עצמו — גם כשמסלימים. מי שהתגבר
+        // צריך לראות מילה טובה לפני שנפתח משהו אחר.
+        showFeedback(report.message)
+
+        when (report.outcome) {
+            OvercomingReporter.Outcome.ESCALATED,
+            OvercomingReporter.Outcome.OFFER_MENTOR ->
                 RiskFlowActivity.launch(
-                    this,
-                    source = "✕ על מסך השעון",
+                    this, source = source,
                     variant = RiskFlowActivity.VARIANT_SECOND_TAP_IN_HOUR
                 )
+            OvercomingReporter.Outcome.AT_PERSONAL_THRESHOLD,
+            OvercomingReporter.Outcome.ACKNOWLEDGED,
+            OvercomingReporter.Outcome.IGNORED_COOLDOWN -> {
+                // ההודעה על המסך מספיקה — אין מה לפתוח
             }
-            OvercomingReporter.Outcome.ACKNOWLEDGED -> showFeedback("נשמר")
-            OvercomingReporter.Outcome.IGNORED_COOLDOWN -> showFeedback("נשמר")
         }
     }
 

@@ -29,7 +29,7 @@ import java.io.File
 class QuestionnaireActivity : Activity() {
 
     private var step = 0
-    private val totalSteps = 9
+    private val totalSteps = 10
 
     // בחירות זמניות לשלב הנוכחי, נשמרות ל-LocalStore בכל "המשך"
     private var selectedMulti = mutableSetOf<String>()
@@ -124,6 +124,13 @@ class QuestionnaireActivity : Activity() {
             8 -> renderConsent(
                 container, "בסדר שאשלח הודעה מדי פעם?",
                 LocalStore.KEY_Q8_CONSENT_MESSAGE
+            )
+            // הנתון שקובע מתי המערכת מציעה חיזוק מורחב. מחליף סף שהומצא
+            // ("שנייה בשעה") בסף שיש לו משמעות אצל האדם הזה.
+            9 -> renderSingleChoice(
+                container, "כשהיצר בא אליך, כמה פעמים אתה מצליח להגיד \"לא\" לפני שקורה משהו?",
+                listOf("פעם אחת", "2-3 פעמים", "4-5 פעמים", "6 ומעלה"),
+                LocalStore.KEY_Q10_REFUSALS
             )
         }
 

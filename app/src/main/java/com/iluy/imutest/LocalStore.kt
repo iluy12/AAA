@@ -27,6 +27,18 @@ object LocalStore {
         prefs(context).edit().putBoolean(KEY_Q_DONE, done).apply()
     }
 
+    /**
+     * מוחק הכל: תשובות השאלון, מצב ההיכון, ההקלטה האישית — ובנפרד גם
+     * לוח ההתגברויות. נועד לבדיקות, כדי להתחיל מאפס בלי להסיר ולהתקין
+     * מחדש (מה שממילא לא תמיד אפשרי כשעילוי היא מסך-הבית).
+     */
+    fun resetAll(context: Context) {
+        prefs(context).edit().clear().apply()
+        context.getSharedPreferences("iluy_calendar", Context.MODE_PRIVATE)
+            .edit().clear().apply()
+        EventLog.log(context, "INFO", "all_data_reset")
+    }
+
     fun saveMultiChoice(context: Context, key: String, values: List<String>) {
         prefs(context).edit().putString(key, values.joinToString(",")).apply()
     }
@@ -68,6 +80,30 @@ object LocalStore {
     fun setCooldownUntil(context: Context, epochMillis: Long) {
         prefs(context).edit().putLong(KEY_COOLDOWN_UNTIL, epochMillis).apply()
     }
+
+    // ---------- סף אישי להסלמה (שאלה 10) ----------
+
+    /**
+     * כמה פעמים המשתמש מצליח לסרב לפני שקורה משהו, לפי דיווחו העצמי.
+     * זה הופך את ההסלמה ממספר שהומצא ("שנייה בשעה") לסף שיש לו משמעות
+     * אצל האדם הזה.
+     *
+     * **רצפה של 3** גם למי שדיווח פחות: מי שענה "פעם אחת" היה מקבל מסך
+     * כבר בהתגברות הראשונה, וזה מציף במקום לעזור.
+     */
+    fun getPersonalThreshold(context: Context): Int {
+        val answer = getSingleChoice(context, KEY_Q10_REFUSALS)
+        val reported = when {
+            answer.startsWith("פעם אחת") -> 1
+            answer.startsWith("2") -> 3
+            answer.startsWith("4") -> 5
+            answer.startsWith("6") -> 6
+            else -> 3
+        }
+        return maxOf(reported, MIN_PERSONAL_THRESHOLD)
+    }
+
+    const val MIN_PERSONAL_THRESHOLD = 3
 
     // ---------- כיול-אישי לסף-ההקשה (תרגול בשאלון) ----------
 
@@ -128,6 +164,7 @@ object LocalStore {
     const val KEY_Q6_DURATION = "q6_duration"
     const val KEY_Q7_CONSENT_CALL = "q7_consent_call"
     const val KEY_Q8_CONSENT_MESSAGE = "q8_consent_message"
+    const val KEY_Q10_REFUSALS = "q10_refusals_before_fall"
 
     private const val KEY_Q_DONE = "questionnaire_done"
     private const val KEY_TAP_STANDBY_UNTIL = "tap_standby_until"

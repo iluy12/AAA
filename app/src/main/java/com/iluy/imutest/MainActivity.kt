@@ -120,6 +120,22 @@ class MainActivity : Activity() {
             visibility = android.view.View.GONE
         }
 
+        container.addView(secondaryButton("מלא שאלון מחדש") {
+            LocalStore.setQuestionnaireDone(this, false)
+            EventLog.log(this, "INFO", "questionnaire_restart_requested")
+            startActivity(Intent(this, QuestionnaireActivity::class.java))
+            finish()
+        })
+
+        container.addView(secondaryButton("אפס הכל והתחל שאלון") {
+            // מוחק גם את הלוח וגם את התשובות. לבדיקות: מאפשר להתחיל
+            // מאפס בלי להסיר את האפליקציה — מה שממילא לא תמיד אפשרי
+            // כשעילוי היא מסך-הבית.
+            LocalStore.resetAll(this)
+            startActivity(Intent(this, QuestionnaireActivity::class.java))
+            finish()
+        })
+
         container.addView(secondaryButton("בדוק עדכון") {
             updateStatus.visibility = android.view.View.VISIBLE
             updateStatus.text = "בודק…"

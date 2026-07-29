@@ -29,11 +29,15 @@ class TapAcknowledgedActivity : Activity() {
 
     companion object {
         const val EXTRA_SOURCE = "extra_source"
+        const val EXTRA_MESSAGE = "extra_message"
         private const val AUTO_DISMISS_MS = 2_500L
+        /** בסף האישי ההודעה ארוכה יותר וכוללת רמיזת-מלווה — צריך זמן לקרוא. */
+        private const val AUTO_DISMISS_LONG_MS = 5_000L
 
-        fun launch(context: Context, source: String) {
+        fun launch(context: Context, source: String, message: String? = null) {
             val intent = Intent(context, TapAcknowledgedActivity::class.java).apply {
                 putExtra(EXTRA_SOURCE, source)
+                if (message != null) putExtra(EXTRA_MESSAGE, message)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
             context.startActivity(intent)
@@ -53,14 +57,18 @@ class TapAcknowledgedActivity : Activity() {
             gravity = Gravity.CENTER
             setPadding(28, 40, 28, 28)
         }
+        val message = intent.getStringExtra(EXTRA_MESSAGE) ?: Encouragements.ordinary()
+        val isLong = message.length > 40
+
         container.addView(TextView(this).apply {
-            text = "ההקשה נשמרה"
-            textSize = 17f
+            text = message
+            textSize = if (isLong) 15f else 17f
             gravity = Gravity.CENTER
             setTextColor(ContextCompat.getColor(context, R.color.text_primary))
         })
         setContentView(container)
 
-        Handler(Looper.getMainLooper()).postDelayed({ finish() }, AUTO_DISMISS_MS)
+        val dismissAfter = if (isLong) AUTO_DISMISS_LONG_MS else AUTO_DISMISS_MS
+        Handler(Looper.getMainLooper()).postDelayed({ finish() }, dismissAfter)
     }
 }
