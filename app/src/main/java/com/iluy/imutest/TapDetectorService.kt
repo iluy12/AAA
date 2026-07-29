@@ -133,7 +133,13 @@ class TapDetectorService : Service(), SensorEventListener {
                 "sensor;type=${s.type};name=${s.name};" +
                     "power_ma=${"%.2f".format(s.power)};" +
                     "min_delay_us=${s.minDelay};" +
-                    "max_range=${"%.1f".format(s.maximumRange)}"
+                    "max_range=${"%.1f".format(s.maximumRange)};" +
+                    // wakeup קובע אם החיישן ממשיך למסור אירועים כשהמעבד
+                    // ישן. עד עכשיו לא רשמנו את זה, ולכן חיפשנו את סיבת
+                    // עצירת-הזרם בכיוונים אחרים. fifo מראה אם יש חוצץ
+                    // חומרתי שיכול לצבור דגימות בשינה ולשפוך אותן בהתעוררות.
+                    "wakeup=${s.isWakeUpSensor};" +
+                    "fifo_max=${s.fifoMaxEventCount}"
             )
         }
 
@@ -169,10 +175,25 @@ class TapDetectorService : Service(), SensorEventListener {
             this, Manifest.permission.BODY_SENSORS
         ) == PackageManager.PERMISSION_GRANTED
         if (hasBodySensorPermission) {
-            heartRateSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE)
+            // ⚠️ מעדיפים את וריאנט ה-wakeup במפורש. חיישן רגיל (non-wakeup)
+            // מפסיק לפי החוזה של אנדרואיד למסור אירועים כשהמעבד נכנס
+            // לשינה עמוקה — וזה בדיוק מה שנמדד בלוג של 2026-07-29: הזרם
+            // נפסק ~8 דקות אחרי המגע האחרון ולא חזר במשך שעתיים, בזמן
+            // שהשירות עצמו המשיך לחיות (אין tap_service_stopped בלוג).
+            // כלומר foreground service לבדו אינו מספיק.
+            //
+            // אם קיים וריאנט wakeup, הוא אמור להעיר את המעבד לכל דגימה
+            // ולפתור את זה בלי wakelock ובלי תלות באף אפליקציה אחרת.
+            // אם אינו קיים — נופלים בחזרה לרגיל, בדיוק כמו קודם, כדי
+            // שהבדיקה הזו לא תוכל להרע את המצב הקיים.
+            heartRateSensor = sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE, true)
+                ?: sensorManager.getDefaultSensor(Sensor.TYPE_HEART_RATE)
             if (heartRateSensor != null) {
                 wornSensorAvailable = true
-                EventLog.log(this, "INFO", "worn_gating_using_heart_rate_sensor")
+                EventLog.log(
+                    this, "INFO",
+                    "worn_gating_using_heart_rate_sensor;wakeup=${heartRateSensor?.isWakeUpSensor}"
+                )
                 return
             }
         }
