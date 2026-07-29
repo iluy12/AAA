@@ -177,6 +177,19 @@ class MainActivity : Activity() {
             container.addView(secondaryButton("שלח לוג ← קבל כתובת") {
                 uploadLog()
             })
+            // ⚠️ בלחיצה בלבד, ולא בהפעלה. הסריקה מוסיפה עשרות שורות
+            // בבת-אחת, ואילו רצה מעצמה היא הייתה דוחקת החוצה את סיכומי
+            // הדופק — כלומר הורסת בדיוק את בדיקת-הלילה שבשבילה הכל נבנה.
+            // הסדר הנכון: קודם לשלוח את לוג-הלילה, אחר-כך לסרוק, ולשלוח שוב.
+            container.addView(secondaryButton("סרוק את השעון") {
+                // ברקע: getInstalledPackages עם כל הרכיבים לוקח שניות על
+                // המכשיר הזה, וכל שורה גם נכתבת לקובץ. על החוט הראשי זה
+                // מקפיא את המסך ועלול להגיע ל-ANR.
+                Thread {
+                    SystemScan.run(this)
+                    runOnUiThread { uploadLog() }
+                }.start()
+            })
 
             val display = TextView(this).apply {
                 textSize = 10f
