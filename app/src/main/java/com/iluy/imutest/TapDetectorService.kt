@@ -79,6 +79,7 @@ class TapDetectorService : Service(), SensorEventListener {
     private var hrSamplesSinceLastLog = 0
     private var hrDiagnosticStarted = false
     private var hrLastSummaryElapsedMs: Long? = null
+    private var hrLastRawBits: Int? = null
     private val hrSmoother = HeartRate.Smoother()
     private val hrDiagnosticHandler = Handler(Looper.getMainLooper())
     private val hrDiagnosticSummaryRunnable = object : Runnable {
@@ -116,6 +117,13 @@ class TapDetectorService : Service(), SensorEventListener {
                     // כדי שיהיו לו נתוני-אמת לפני שנכתב מנוע-הציון.
                     "steps=${if (stepCountAtWindowStart < 0) -1 else stepCountTotal - stepCountAtWindowStart};" +
                     "still_ms=${lastStepElapsedMs?.let { nowElapsed - it } ?: -1};" +
+                    // ⚠️ ארבעת הבייטים הגולמיים של דגימה אחת מהחלון.
+                    // הפענוח קורא **רק את b2** — 8 מתוך 32 ביט — ו-24
+                    // הנותרים מעולם לא נבדקו. שם יכולים לשבת איכות-אות
+                    // או מרווח-פעימה, שהוא הדבר היחיד שיכול לתת לנו
+                    // שונוּת-דופק אמיתית. שורה אחת בדקה, ומספיקה כדי
+                    // לראות אילו בייטים משתנים עם הדופק ואילו קבועים.
+                    hrRawBitsFragment() +
                     batteryFragment()
             )
             hrLastSummaryElapsedMs = nowElapsed
@@ -146,6 +154,21 @@ class TapDetectorService : Service(), SensorEventListener {
      * והנתמך ביותר. אינו דורש הרשאה ואינו רושם מאזין — `null` כמקלט מחזיר
      * את ה-Intent הדביק האחרון מיידית.
      */
+    /**
+     * `bits=<hex>;b3=..;b2=..;b1=..;b0=..` מדגימה אחת בחלון, או `bits=—`.
+     *
+     * `b2` הוא הדופק המפוענח. שלושת האחרים נרשמים כדי לגלות מה יש בהם:
+     * בייט שמשתנה יחד עם הדופק הוא כנראה נגזרת שלו, בייט שקבוע לגמרי
+     * הוא ריפוד, ובייט שמשתנה **בלי** קשר לדופק הוא המעניין — הוא יכול
+     * להיות איכות-אות או מרווח בין פעימות.
+     */
+    private fun hrRawBitsFragment(): String {
+        val bits = hrLastRawBits ?: return "bits=—;"
+        return "bits=${"%08X".format(bits)};" +
+            "b3=${(bits ushr 24) and 0xFF};b2=${(bits ushr 16) and 0xFF};" +
+            "b1=${(bits ushr 8) and 0xFF};b0=${bits and 0xFF};"
+    }
+
     private fun batteryFragment(): String {
         val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
             ?: return "batt=-1;charging=false"
@@ -335,6 +358,7 @@ class TapDetectorService : Service(), SensorEventListener {
             Sensor.TYPE_HEART_RATE -> {
                 val raw = event.values.getOrNull(0) ?: 0f
                 val bpm = HeartRate.decodeBpm(raw)
+                hrLastRawBits = java.lang.Float.floatToRawIntBits(raw)
                 // ערך גולמי 0 = אין מגע עם העור, ולכן זה מדד-לבישה אמיתי.
                 // קודם ההשוואה הייתה hr > 0f, שהתקיימה תמיד כי הערכים
                 // ה"שבורים" היו עצומים — כלומר לא נמדד כאן כלום בפועל.
