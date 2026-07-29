@@ -29,14 +29,28 @@ object LogUploader {
     private const val ENDPOINT = "https://0x0.st"
     private const val BOUNDARY = "----iluyLogBoundary"
 
-    /** תקרה כדי לא לנסות להעלות מגה-בייטים דרך חיבור של שעון. */
-    private const val MAX_LINES = 1_000
+    /**
+     * 1000 שורות היו כ-80KB וגרמו ל-SocketTimeout על חיבור של שעון.
+     * 300 שורות **מסוננות** מכילות יותר מידע שימושי מ-1000 גולמיות.
+     */
+    private const val MAX_LINES = 300
+
+    /**
+     * שורות רועשות שנשלטות בכמות ולא בתוכן — דגימות דופק ותנועות מגע.
+     * הן נחוצות על המכשיר לאבחון מיידי, אבל מיותרות בשליחה: הסיכומים
+     * (hr_diagnostic_summary, swipe) נשארים ומספרים את אותו סיפור.
+     */
+    private val noisyPrefixes = listOf("hr_sample", "stroke;")
 
     fun upload(activity: Activity, onResult: (String) -> Unit) {
         Thread {
             val result = try {
-                val lines = EventLog.readLastN(activity, MAX_LINES)
+                val lines = EventLog.readAll(activity)
+                    .filter { line -> noisyPrefixes.none { line.contains(it) } }
+                    .takeLast(MAX_LINES)
                 if (lines.isEmpty()) "הלוג ריק" else post(lines.joinToString("\n"))
+            } catch (e: java.net.SocketTimeoutException) {
+                "פג זמן — החיבור איטי מדי. נסה שוב"
             } catch (e: Exception) {
                 "שגיאה: ${e.javaClass.simpleName}"
             }
@@ -48,8 +62,10 @@ object LogUploader {
         val connection = (URL(ENDPOINT).openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
-            connectTimeout = 15_000
-            readTimeout = 30_000
+            // נדיב בכוונה: החיבור של השעון איטי, וכישלון כאן עולה לנו
+            // סבב שלם של אבחון.
+            connectTimeout = 30_000
+            readTimeout = 90_000
             setRequestProperty("Content-Type", "multipart/form-data; boundary=$BOUNDARY")
             // חלק מהשירותים דוחים בקשות בלי User-Agent מזוהה
             setRequestProperty("User-Agent", "iluy-watch-log/1.0")
