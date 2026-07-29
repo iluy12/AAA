@@ -50,6 +50,18 @@ class TapDetectorService : Service(), SensorEventListener {
     private var wornSensorAvailable = false
     private var wornState = true // אופטימי כברירת מחדל — לא חוסם אם אין נתון
 
+    // --- ערוץ התנועה (§5.4) ---
+    //
+    // הכלל היחיד שעובד מיום 1 הוא "דופק שעולה אחרי שהתנועה כבר נעצרה",
+    // ועד עכשיו לא היה לו מקור נתונים רשום בכלל: onStartCommand רשם רק
+    // off-body ודופק. מונה-הצעדים מוצהר על power_ma=0.00 ומגיע כאירוע
+    // on-change, כלומר הוא שותק לגמרי כשאין תנועה — ושתיקתו **היא**
+    // האות, לא תקלה.
+    private var stepSensor: Sensor? = null
+    private var stepCountTotal = -1L
+    private var stepCountAtWindowStart = -1L
+    private var lastStepElapsedMs: Long? = null
+
     private var isListening = false
 
 
@@ -98,9 +110,16 @@ class TapDetectorService : Service(), SensorEventListener {
                     // האחרון, כלומר "לבוש" — ולכן הוא לא אמין כאן.
                     "stream=${if (hrSampleCountInWindow == 0) "stalled" else "live"};" +
                     "window_ms=$windowMs;" +
+                    // steps = צעדים בחלון הזה. still_ms = כמה זמן עבר מאז
+                    // הצעד האחרון — זה בדיוק המדד של §5.4, "מרגע שהתנועה
+                    // נעצרה מתחיל השעון לספור", ולכן הוא נרשם כבר עכשיו
+                    // כדי שיהיו לו נתוני-אמת לפני שנכתב מנוע-הציון.
+                    "steps=${if (stepCountAtWindowStart < 0) -1 else stepCountTotal - stepCountAtWindowStart};" +
+                    "still_ms=${lastStepElapsedMs?.let { nowElapsed - it } ?: -1};" +
                     batteryFragment()
             )
             hrLastSummaryElapsedMs = nowElapsed
+            stepCountAtWindowStart = stepCountTotal
             hrSampleCountInWindow = 0
             hrNoContactCountInWindow = 0
             hrMinBpmInWindow = Int.MAX_VALUE
@@ -261,8 +280,23 @@ class TapDetectorService : Service(), SensorEventListener {
             // וגם ממשיך לייצר את אותן התרעות-שווא שבגללן ויתרנו עליו.
             offBodySensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
             heartRateSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
+
+            // מונה-הצעדים, שוב עם העדפה לוריאנט ה-wakeup מאותה סיבה כמו
+            // בדופק. ⚠️ הוא **אינו** דורש הרשאה כאן רק מפני ש-targetSdk
+            // הוא 28; מ-29 אנדרואיד דורש ACTIVITY_RECOGNITION, ולכן העלאת
+            // targetSdk בעתיד תשתיק את הערוץ הזה בשקט אם לא תתווסף הרשאה.
+            stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER, true)
+                ?: sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+            stepSensor?.let {
+                sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
+                EventLog.log(this, "INFO", "step_counter_registered;wakeup=${it.isWakeUpSensor}")
+            } ?: EventLog.log(this, "INFO", "step_counter_unavailable")
             if (DebugConfig.DEBUG_TAG_ENABLED && heartRateSensor != null && !hrDiagnosticStarted) {
                 hrDiagnosticStarted = true
+                // נקודת-הייחוס נקבעת כאן ולא בסיכום הראשון, אחרת השורה
+                // הראשונה הייתה מדווחת window_ms=-1 — וזו דווקא שורה
+                // מעניינת, כי היא אומרת אם הזרם מתחיל מיד עם השירות.
+                hrLastSummaryElapsedMs = SystemClock.elapsedRealtime()
                 hrDiagnosticHandler.postDelayed(hrDiagnosticSummaryRunnable, 60_000L)
             }
             isListening = true
@@ -288,6 +322,15 @@ class TapDetectorService : Service(), SensorEventListener {
         when (event.sensor.type) {
             Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT -> {
                 wornState = (event.values.getOrNull(0) ?: 1f) >= 0.5f
+            }
+            Sensor.TYPE_STEP_COUNTER -> {
+                // הערך מצטבר מאז האתחול, ולכן מה שמעניין הוא ההפרש.
+                // נשמר כ-Long למרות שהחיישן מוסר float: מעל ~16.7 מיליון
+                // ל-float אין דיוק שלם, וזה גם מה שקורה כשמכשיר לא מאותחל
+                // חודשים. ההמרה נעשית פעם אחת כאן.
+                stepCountTotal = (event.values.getOrNull(0) ?: 0f).toLong()
+                if (stepCountAtWindowStart < 0) stepCountAtWindowStart = stepCountTotal
+                lastStepElapsedMs = SystemClock.elapsedRealtime()
             }
             Sensor.TYPE_HEART_RATE -> {
                 val raw = event.values.getOrNull(0) ?: 0f
