@@ -31,11 +31,14 @@ object LogUploader {
     private const val MAX_LINES = 300
 
     /**
-     * שורות רועשות שנשלטות בכמות ולא בתוכן — דגימות דופק ותנועות מגע.
-     * הן נחוצות על המכשיר לאבחון מיידי, אבל מיותרות בשליחה: הסיכומים
-     * (hr_diagnostic_summary, swipe) נשארים ומספרים את אותו סיפור.
+     * רק תנועות-מגע גולמיות מסוננות — הן רבות ומעניינות רק על המכשיר.
+     *
+     * ⚠️ hr_sample **לא** מסונן יותר. סיננתי אותו קודם כדי לחסוך נפח,
+     * ובכך מחקתי בדיוק את השדות שהוספתי לאבחון (accuracy ו-all_slots)
+     * — הלוג הגיע בלי המידע שבשבילו נשלח. הוא ממילא מוגבל לדגימה אחת
+     * מכל 30, אז הנפח שולי.
      */
-    private val noisyMarkers = listOf("hr_sample", "stroke;")
+    private val noisyMarkers = listOf("stroke;")
 
     fun upload(activity: Activity, onResult: (String) -> Unit) {
         Thread {

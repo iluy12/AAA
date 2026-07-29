@@ -63,6 +63,8 @@ class WatchFaceActivity : Activity() {
     private var downY = 0f
     private var lastStrokeDirection = 0 // 1 = "\", -1 = "/", 0 = אין עדיין
     private var lastStrokeMs = 0L
+    private var lastStrokeStartX = 0f
+    private var lastStrokeStartY = 0f
 
     /** ACTION_TIME_TICK נורה פעם בדקה — זול בהרבה מטיימר משלנו. */
     private val timeTickReceiver = object : BroadcastReceiver() {
@@ -235,9 +237,19 @@ class WatchFaceActivity : Activity() {
                 val direction = if (dx * dy > 0) 1 else -1
                 val now = System.currentTimeMillis()
 
+                // שני הקווים חייבים להיות **באותו אזור**. בלי זה, קו
+                // אלכסוני בפינה אחת וקו אלכסוני נגדי בפינה אחרת, דקות
+                // אחר-כך, נספרו כ-✕ — וזה מקור ההתגברויות שנרשמו בטעות.
+                // מי שמצייר ✕ באמת מצייר את שני הקווים כמעט באותו מקום.
+                val nearPrevious = Math.hypot(
+                    (downX - lastStrokeStartX).toDouble(),
+                    (downY - lastStrokeStartY).toDouble()
+                ) <= minSide * DebugConfig.X_GESTURE_MAX_STROKE_DISTANCE_FRACTION
+
                 val isSecondStroke = lastStrokeDirection != 0 &&
                     direction != lastStrokeDirection &&
-                    now - lastStrokeMs <= DebugConfig.X_GESTURE_MAX_INTERVAL_MS
+                    now - lastStrokeMs <= DebugConfig.X_GESTURE_MAX_INTERVAL_MS &&
+                    nearPrevious
 
                 if (isSecondStroke) {
                     lastStrokeDirection = 0
@@ -246,6 +258,8 @@ class WatchFaceActivity : Activity() {
                 } else {
                     lastStrokeDirection = direction
                     lastStrokeMs = now
+                    lastStrokeStartX = downX
+                    lastStrokeStartY = downY
                 }
             }
         }
@@ -271,8 +285,10 @@ class WatchFaceActivity : Activity() {
         val horizontal = Math.abs(dx) > Math.abs(dy)
 
         val action = when {
-            horizontal && dx < 0 -> "apps"
-            horizontal -> "menu"
+            // הוחלף לפי התיקון שלך: החלקה מימין (ימין→שמאל, dx שלילי)
+            // פותחת את **המסך הראשי**, לא את מגירת האפליקציות.
+            horizontal && dx < 0 -> "menu"
+            horizontal -> "apps"
             dy > 0 && downY < height * 0.3f && fromRight -> "notifications"
             dy > 0 && downY < height * 0.3f -> "quick_settings"
             dy < 0 && downY > height * 0.7f && fromRight -> "recents"
