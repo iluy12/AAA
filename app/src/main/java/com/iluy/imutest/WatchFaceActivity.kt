@@ -63,8 +63,10 @@ class WatchFaceActivity : Activity() {
     private var downY = 0f
     private var lastStrokeDirection = 0 // 1 = "\", -1 = "/", 0 = אין עדיין
     private var lastStrokeMs = 0L
-    private var lastStrokeStartX = 0f
-    private var lastStrokeStartY = 0f
+    // נקודת-האמצע של הקו הקודם, לא נקודת-ההתחלה שלו — ראו ההסבר
+    // ב-X_GESTURE_MAX_STROKE_DISTANCE_FRACTION.
+    private var lastStrokeMidX = 0f
+    private var lastStrokeMidY = 0f
 
     /** ACTION_TIME_TICK נורה פעם בדקה — זול בהרבה מטיימר משלנו. */
     private val timeTickReceiver = object : BroadcastReceiver() {
@@ -226,10 +228,19 @@ class WatchFaceActivity : Activity() {
                     )
                 }
 
-                if (length < minSide * DebugConfig.X_GESTURE_MIN_STROKE_FRACTION) return
+                // כל דחייה נרשמת בשורת x_reject. שורות stroke; מסוננות
+                // מהעלאת-הלוג, ולכן "ציירתי ✕ ולא קרה כלום" היה עד היום
+                // דיווח שאי-אפשר לאבחן ממנו כלום.
+                val minLength = minSide * DebugConfig.X_GESTURE_MIN_STROKE_FRACTION
+                if (length < minLength) {
+                    logXReject("too_short", "len=${length.toInt()};need=${minLength.toInt()}")
+                    return
+                }
 
                 val shorterAxis = Math.min(Math.abs(dx), Math.abs(dy))
-                if (shorterAxis < length * DebugConfig.X_GESTURE_MIN_DIAGONAL_RATIO) {
+                val minShorterAxis = length * DebugConfig.X_GESTURE_MIN_DIAGONAL_RATIO
+                if (shorterAxis < minShorterAxis) {
+                    logXReject("not_diagonal", "short=${shorterAxis.toInt()};need=${minShorterAxis.toInt()}")
                     handleSwipe(dx, dy, root.width, root.height)
                     return
                 }
@@ -237,32 +248,65 @@ class WatchFaceActivity : Activity() {
                 val direction = if (dx * dy > 0) 1 else -1
                 val now = System.currentTimeMillis()
 
-                // שני הקווים חייבים להיות **באותו אזור**. בלי זה, קו
-                // אלכסוני בפינה אחת וקו אלכסוני נגדי בפינה אחרת, דקות
-                // אחר-כך, נספרו כ-✕ — וזה מקור ההתגברויות שנרשמו בטעות.
-                // מי שמצייר ✕ באמת מצייר את שני הקווים כמעט באותו מקום.
-                val nearPrevious = Math.hypot(
-                    (downX - lastStrokeStartX).toDouble(),
-                    (downY - lastStrokeStartY).toDouble()
-                ) <= minSide * DebugConfig.X_GESTURE_MAX_STROKE_DISTANCE_FRACTION
+                // שני הקווים חייבים להיחתך **באותו אזור**. בלי זה, קו
+                // אלכסוני בפינה אחת וקו נגדי בפינה אחרת, דקות אחר-כך,
+                // נספרו כ-✕ — וזה מקור ההתגברויות שנרשמו בטעות.
+                //
+                // ⚠️ הבדיקה מודדת את **נקודות האמצע**. קודם נמדדו נקודות
+                // ההתחלה, ובזה הייתה הטעות שהפילה איקסים אמיתיים: שני
+                // הקווים מתחילים בפינות מנוגדות, כך שהמרחק ביניהן הוא
+                // רוחב ה-✕ — וככל שצוירה מחווה גדולה ונקייה יותר, כך
+                // גדל הסיכוי שתידחה. האמצעים, לעומת זאת, מצטלבים.
+                val midX = (downX + event.rawX) / 2f
+                val midY = (downY + event.rawY) / 2f
+                val midDistance = Math.hypot(
+                    (midX - lastStrokeMidX).toDouble(),
+                    (midY - lastStrokeMidY).toDouble()
+                )
+                val maxDistance = minSide * DebugConfig.X_GESTURE_MAX_STROKE_DISTANCE_FRACTION
+                val gapMs = now - lastStrokeMs
 
                 val isSecondStroke = lastStrokeDirection != 0 &&
                     direction != lastStrokeDirection &&
-                    now - lastStrokeMs <= DebugConfig.X_GESTURE_MAX_INTERVAL_MS &&
-                    nearPrevious
+                    gapMs <= DebugConfig.X_GESTURE_MAX_INTERVAL_MS &&
+                    midDistance <= maxDistance
 
                 if (isSecondStroke) {
                     lastStrokeDirection = 0
                     lastStrokeMs = 0L
                     onXDrawn()
                 } else {
+                    // קו ראשון תקין הוא לא דחייה — רק קו שני שלא נסגר.
+                    if (lastStrokeDirection != 0) {
+                        val reason = when {
+                            direction == lastStrokeDirection -> "same_direction"
+                            gapMs > DebugConfig.X_GESTURE_MAX_INTERVAL_MS -> "timeout"
+                            else -> "too_far"
+                        }
+                        logXReject(
+                            reason,
+                            "gap_ms=$gapMs;mid_dist=${midDistance.toInt()};max=${maxDistance.toInt()}"
+                        )
+                    }
                     lastStrokeDirection = direction
                     lastStrokeMs = now
-                    lastStrokeStartX = downX
-                    lastStrokeStartY = downY
+                    lastStrokeMidX = midX
+                    lastStrokeMidY = midY
                 }
             }
         }
+    }
+
+    /**
+     * למה קו לא סגר ✕.
+     *
+     * שורה קצרה ונפרדת מ-stroke;, כי stroke; מסונן מהעלאת-הלוג בגלל
+     * נפח — וכך "ציירתי ✕ ולא קרה כלום" הפך לדיווח בלתי-ניתן לאבחון.
+     * כאן יש שורה אחת לכל דחייה, עם המספר שהכשיל אותה.
+     */
+    private fun logXReject(reason: String, detail: String) {
+        if (!DebugConfig.DEBUG_TAG_ENABLED) return
+        EventLog.log(this, "DEBUG", "x_reject;reason=$reason;$detail")
     }
 
     /**
@@ -356,7 +400,6 @@ class WatchFaceActivity : Activity() {
         showFeedback(report.message)
 
         when (report.outcome) {
-            OvercomingReporter.Outcome.ESCALATED,
             OvercomingReporter.Outcome.OFFER_MENTOR ->
                 // בהשהיה, לא מיד: קודם הצגתי את החיזוק ופתחתי מסך מעליו
                 // באותו רגע, אז הוא הבזיק ונעלם. מי שהתגבר צריך להספיק
