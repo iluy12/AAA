@@ -21,10 +21,16 @@ import java.net.URL
  */
 object LogUploader {
 
-    private const val ENDPOINT = "https://paste.rs"
+    /**
+     * 0x0.st מקבל multipart, שזה חוזה ברור יותר מ-POST גולמי. paste.rs
+     * החזיר 500 בפועל — כנראה בגלל הגודל או סוג-התוכן — ובלי גוף-שגיאה
+     * שאפשר ללמוד ממנו.
+     */
+    private const val ENDPOINT = "https://0x0.st"
+    private const val BOUNDARY = "----iluyLogBoundary"
 
     /** תקרה כדי לא לנסות להעלות מגה-בייטים דרך חיבור של שעון. */
-    private const val MAX_LINES = 2_000
+    private const val MAX_LINES = 1_000
 
     fun upload(activity: Activity, onResult: (String) -> Unit) {
         Thread {
@@ -43,11 +49,21 @@ object LogUploader {
             requestMethod = "POST"
             doOutput = true
             connectTimeout = 15_000
-            readTimeout = 15_000
-            setRequestProperty("Content-Type", "text/plain; charset=utf-8")
+            readTimeout = 30_000
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$BOUNDARY")
+            // חלק מהשירותים דוחים בקשות בלי User-Agent מזוהה
+            setRequestProperty("User-Agent", "iluy-watch-log/1.0")
         }
         try {
-            OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { it.write(body) }
+            OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
+                writer.write("--$BOUNDARY\r\n")
+                writer.write(
+                    "Content-Disposition: form-data; name=\"file\"; filename=\"iluy.log\"\r\n"
+                )
+                writer.write("Content-Type: text/plain; charset=utf-8\r\n\r\n")
+                writer.write(body)
+                writer.write("\r\n--$BOUNDARY--\r\n")
+            }
 
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
@@ -56,7 +72,8 @@ object LogUploader {
             return if (code in 200..299 && !response.isNullOrBlank()) {
                 response
             } else {
-                "נכשל (קוד $code)"
+                // גוף-השגיאה נחתך ומוצג: בלעדיו "נכשל 500" הוא מבוי סתום
+                "נכשל $code: ${response?.take(60) ?: "אין פירוט"}"
             }
         } finally {
             connection.disconnect()

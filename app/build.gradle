@@ -19,8 +19,13 @@ android {
         // versionCode עולה עם כל ריצת CI. קודם הוא היה קבוע על 2, ולכן
         // כל הגרסאות נראו זהות לאנדרואיד ולא היה שום סימן חיצוני
         // שהתקנה בכלל תפסה. מחוץ ל-CI נופל ל-1.
-        versionCode (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
-        versionName "1.0-build-${System.getenv("GITHUB_RUN_NUMBER") ?: "local"}"
+        //
+        // דרך משתנה ולא בשורה אחת: `versionCode (x ?: "1").toInteger()`
+        // נפרש ב-Groovy כקריאה ל-versionCode עם מחרוזת ואז toInteger על
+        // התוצאה — כלומר versionCode קיבל טקסט, וזה הפיל את הבנייה.
+        def ciRunNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+        versionCode ciRunNumber
+        versionName "1.0-build-$ciRunNumber"
 
         // גלוי במסך הבית — כדי לדעת בוודאות איזו גרסה מותקנת בפועל בלי לנחש.
         buildConfigField "String", "BUILD_TIMESTAMP", "\"${new Date().format("yyyy-MM-dd HH:mm")}\""
