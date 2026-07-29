@@ -377,8 +377,10 @@ class QuestionnaireActivity : Activity() {
         addTitle(container, "איך לדווח")
         container.addView(TextView(this).apply {
             text = "בכל פעם שהתגברת על ניסיון:\n" +
-                "הדלק את המסך וצייר ✕ עליו — שני קווים אלכסוניים, " +
-                "בכל מקום על המסך.\n\n" +
+                "הדלק את המסך וצייר ✕ קטן במרכז המסך — שני קווים " +
+                "אלכסוניים קצרים.\n\n" +
+                "קטן ובמרכז, לא מקצה לקצה: קו שמתחיל בשולי המסך נחטף " +
+                "למחוות-מערכת לפני שהוא מגיע אלינו.\n\n" +
                 "אין צורך לפתוח שום דבר. מי שמסתכל רואה שעון רגיל."
             textSize = 14f
             setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
@@ -386,7 +388,7 @@ class QuestionnaireActivity : Activity() {
         })
 
         val statusText = TextView(this).apply {
-            text = "נסה עכשיו — צייר ✕ במסגרת שלמטה"
+            text = "נסה עכשיו — צייר ✕ קטן במרכז המסגרת שלמטה"
             textSize = 13f
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, 12)
@@ -404,9 +406,8 @@ class QuestionnaireActivity : Activity() {
             setOnClickListener { renderRecordingStep() }
         }
 
-        // משטח-תרגול עם אותה לוגיקת-זיהוי בדיוק שרצה על מסך-השעון
         val practicePad = TextView(this).apply {
-            text = "צייר כאן ✕"
+            text = "צייר כאן ✕ קטן, במרכז"
             textSize = 13f
             gravity = Gravity.CENTER
             setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
@@ -451,6 +452,9 @@ class QuestionnaireActivity : Activity() {
     private fun handlePracticeTouch(view: View, event: MotionEvent, onXDrawn: () -> Unit): Boolean {
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
+                // בלי זה ה-ScrollView שמסביב חוטף כל גרירה אנכית לגלילה,
+                // והקו האלכסוני אף פעם לא מגיע לכאן שלם.
+                view.parent?.requestDisallowInterceptTouchEvent(true)
                 practiceDownX = event.x
                 practiceDownY = event.y
             }

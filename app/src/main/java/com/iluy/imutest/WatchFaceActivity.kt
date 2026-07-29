@@ -86,9 +86,25 @@ class WatchFaceActivity : Activity() {
      * צביעה בשחור פותרת את הפס האפור בלי לקחת שום יכולת מהמערכת.
      */
     private fun blendStatusBar() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            window.statusBarColor = Color.BLACK
-            window.navigationBarColor = Color.BLACK
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) return
+
+        // statusBarColor נכנס לתוקף רק כשהדגל הזה מוגדר ו-TRANSLUCENT
+        // כבוי. בלעדיו הצבע נקבע והמערכת פשוט מתעלמת ממנו — בדיוק מה
+        // שקרה, ולכן הפס נשאר אפור.
+        window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+        @Suppress("DEPRECATION")
+        window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
+
+        window.statusBarColor = Color.BLACK
+        window.navigationBarColor = Color.BLACK
+
+        // ערכת-הנושא בהירה, ולכן המערכת עלולה לצייר אייקונים כהים —
+        // בלתי-נראים על שחור. מכבים את דגל-הבהיר כדי שיישארו לבנים.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility =
+                window.decorView.systemUiVisibility and
+                    View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
         }
     }
 
@@ -186,9 +202,14 @@ class WatchFaceActivity : Activity() {
                 val minLength = minSide * DebugConfig.X_GESTURE_MIN_STROKE_FRACTION
                 if (length < minLength) return true
 
-                // חייב להיות אלכסוני באמת — החלקה אופקית או אנכית נפסלת
+                // החלקה חד-צירית = ניווט, לא ✕. אלה מחליפות את מחוות
+                // הלאנצ'ר של היצרן שנעלמו כשהחלפנו אותו — בלי תחליף,
+                // מסך-הבית שלנו לוקח יכולות במקום להוסיף.
                 val shorterAxis = Math.min(Math.abs(dx), Math.abs(dy))
-                if (shorterAxis < length * DebugConfig.X_GESTURE_MIN_DIAGONAL_RATIO) return true
+                if (shorterAxis < length * DebugConfig.X_GESTURE_MIN_DIAGONAL_RATIO) {
+                    handleSwipe(dx, dy)
+                    return true
+                }
 
                 val direction = if (dx * dy > 0) 1 else -1
                 val now = System.currentTimeMillis()
@@ -209,6 +230,40 @@ class WatchFaceActivity : Activity() {
             }
         }
         return true
+    }
+
+    /**
+     * ניווט בהחלקה, תחליף למחוות הלאנצ'ר המקורי:
+     *   מטה  → מגירת ההתראות
+     *   מעלה → כל האפליקציות
+     *   הצידה → תפריט עילוי
+     */
+    private fun handleSwipe(dx: Float, dy: Float) {
+        val horizontal = Math.abs(dx) > Math.abs(dy)
+        when {
+            horizontal -> openMenu()
+            dy < 0 -> AppDrawerActivity.launch(this)
+            else -> expandNotifications()
+        }
+    }
+
+    /**
+     * פתיחת מגירת-ההתראות. אין ל-SDK דרך רשמית לעשות זאת, ולכן דרך
+     * רפלקציה על StatusBarManager — עם הרשאת EXPAND_STATUS_BAR שהיא
+     * הרשאה רגילה שנענית אוטומטית.
+     *
+     * אם היצרן חסם את זה, נופלים בשקט חזרה לתפריט שלנו במקום להשאיר
+     * את המשתמש בלי שום תגובה למחווה.
+     */
+    private fun expandNotifications() {
+        try {
+            val service = getSystemService("statusbar")
+            val manager = Class.forName("android.app.StatusBarManager")
+            manager.getMethod("expandNotificationsPanel").invoke(service)
+        } catch (e: Exception) {
+            EventLog.log(this, "DEBUG", "expand_notifications_unavailable")
+            openMenu()
+        }
     }
 
     private fun onXDrawn() {
