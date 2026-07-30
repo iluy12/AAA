@@ -529,13 +529,23 @@ class TapDetectorService : Service(), SensorEventListener {
 
         sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
 
-        // מד התאוצה נרשם לאותו חלון בדיוק. SENSOR_DELAY_UI ולא NORMAL —
-        // צריך מספיק דגימות כדי שפיזור התנועה יהיה בעל משמעות, אבל לא
-        // 25Hz שמייצרים נפח מיותר.
+        // ⚠️ **SENSOR_DELAY_NORMAL ולא UI.** בסבב הראשון נעשה שימוש ב-UI
+        // וכל הפרצים חזרו עם `accel_n=0`. NORMAL הוא הקצב שמונה-הצעדים
+        // ומד-הדופק כבר משתמשים בו בהצלחה על המכשיר הזה, כלומר הוא נתמך
+        // בוודאות — ואין טעם להתעקש על קצב מהיר יותר לפני שהערוץ בכלל עובד.
+        //
+        // ⚠️ **והתוצאה נרשמת.** בלי זה אי-אפשר להבחין בין שלושה מצבים
+        // שנראים זהים בלוג: החיישן מגיע null, הרישום מחזיר false, או
+        // שהרישום הצליח ואירועים לא מגיעים. ניחשתי במקום למדוד, וזה עלה
+        // סבב שלם.
         accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        accelSensor?.let {
-            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        val accelOk = accelSensor?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
+        EventLog.log(
+            this, "INFO",
+            "accel_register;sensor=${accelSensor?.name ?: "null"};result=${accelOk ?: "no_sensor"}"
+        )
 
         hrDiagnosticHandler.postDelayed(stopHeartRateBurstRunnable, HeartRateSampler.BURST_MS)
     }
