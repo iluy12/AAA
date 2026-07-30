@@ -80,6 +80,7 @@ object SystemScan {
         runCatching { scanSettings(context, log) }.onFailure { log("scan_settings_failed;${it.javaClass.simpleName}") }
         runCatching { scanCallHandlers(context, log) }.onFailure { log("scan_call_failed;${it.javaClass.simpleName}") }
         runCatching { scanProviders(context, log) }.onFailure { log("scan_providers_failed;${it.javaClass.simpleName}") }
+        runCatching { readVendorProviders(context, log) }.onFailure { log("scan_read_failed;${it.javaClass.simpleName}") }
         runCatching { scanLocation(context, log) }.onFailure { log("scan_location_failed;${it.javaClass.simpleName}") }
         log("scan_done")
     }
@@ -155,6 +156,57 @@ object SystemScan {
         }
         pi.receivers?.forEach {
             if (it.exported) log("  comp;kind=receiver;name=${it.name}")
+        }
+    }
+
+    /**
+     * מסדי היצרן שכדאי לקרוא, ומה מחפשים בכל אחד.
+     *
+     * כולם הוצהרו `exported=true` עם `read=null` בסריקת הספקים — כלומר
+     * **פתוחים לקריאה בלי שום הרשאה.**
+     */
+    private val VENDOR_URIS = listOf(
+        // 🎯 מספר ה-SOS. לא נמצא בהגדרות, וזה המקום הסביר היחיד שנותר.
+        "com.sjtc.sos",
+        "com.sjtc.phonebook",
+        "com.sjtc.appcontact",
+        // ספירת הצעדים של היצרן — הצלבה מול המונה שאנחנו קוראים ישירות.
+        "steps",
+        // נתוני שינה. מעניין לראות אם הם באמת מבוססי-תנועה כפי שנראה.
+        "com.sgtc.SgtcSleepMonitoring.provider"
+    )
+
+    /**
+     * קורא את מסדי היצרן ומדפיס שמות-עמודות ומספר שורות.
+     *
+     * ⚠️ **גילוי, לא שאילתה ממוקדת.** אין תיעוד ואין דרך לדעת את שמות
+     * הטבלאות, ולכן פונים ל-authority עצמו ורואים מה חוזר. גם כישלון הוא
+     * מידע — הוא אומר שצריך נתיב, ולא שהמסד סגור.
+     *
+     * ⚠️ הערכים מוסתרים ב-[mask] לפני הרישום. הלוג עולה לשירות ציבורי,
+     * ומספר של מלווה אסור שיתפרסם.
+     */
+    private fun readVendorProviders(context: Context, log: (String) -> Unit) {
+        for (auth in VENDOR_URIS) {
+            val uri = Uri.parse("content://$auth")
+            runCatching {
+                context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+                    log("read;auth=$auth;rows=${c.count};cols=${c.columnNames.joinToString("|")}")
+                    var printed = 0
+                    while (c.moveToNext() && printed < 5) {
+                        val cells = (0 until c.columnCount).joinToString(";") { i ->
+                            val v = runCatching { c.getString(i) }.getOrNull()
+                            "${c.getColumnName(i)}=${mask(v)}"
+                        }
+                        log("  row;$cells")
+                        printed++
+                    }
+                } ?: log("read;auth=$auth;result=null_cursor")
+            }.onFailure {
+                // כישלון צפוי כשה-authority דורש נתיב. שם החריגה מבחין בין
+                // "צריך נתיב" לבין "אין הרשאה", ואלה שתי מסקנות שונות.
+                log("read;auth=$auth;failed=${it.javaClass.simpleName}")
+            }
         }
     }
 
