@@ -345,6 +345,9 @@ class TapDetectorService : Service(), SensorEventListener {
             // התזכורת השעתית. כאן ולא ב-onCreate כדי שהתקנה מחדש תחדש
             // אותה מיד, בלי לחכות לאתחול המכשיר.
             ReportReminder.schedule(this)
+            // מאזין מצב-שיחה, למשך השיחה. נרשם בשירות ולא ב-Activity כי
+            // החיוג קורה כשאף מסך שלנו אינו בחזית.
+            SosCallWatcher.startWatching(this)
             isListening = true
             EventLog.log(this, "INFO", "tap_service_started")
         }

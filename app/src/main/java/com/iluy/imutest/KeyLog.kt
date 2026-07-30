@@ -18,6 +18,22 @@ import android.view.KeyEvent
 object KeyLog {
 
     /**
+     * מתי הייתה לחיצה ארוכה אחרונה, ב-`elapsedRealtime`.
+     *
+     * ⚠️ **זה מה שהופך שיחה יוצאת לאות.** המשתמש עושה שיחות רגילות, ולכן
+     * "שיחה יוצאת" לבדה אינה SOS. התבנית שנבו הגדיר היא **לחיצה ארוכה ואז
+     * חיוג** — הלחיצה היא העיקר, והשיחה מאמתת אותה או מחלישה אותה לפי
+     * משכה. [SosCallWatcher] קורא מכאן.
+     *
+     * ⚠️ ומה שזה **לא** פותר: אם הלחיצה הארוכה אינה מגיעה לאפליקציה כשהמסך
+     * כבוי, השדה יישאר null גם ב-SOS אמיתי. לכן זיהוי לפי **מספר** נשאר
+     * נחוץ כמסלול-גיבוי, וזו הסיבה שמחפשים אותו בסריקה.
+     */
+    @Volatile
+    var lastLongPressElapsedMs: Long? = null
+        private set
+
+    /**
      * ⚠️ **הגרסה הקודמת סיננה בדיוק את מה שצריך למדוד.** היא רשמה רק
      * `ACTION_DOWN` עם `repeatCount == 0`, ולחיצה ארוכה מייצרת אירועים עם
      * `repeatCount > 0` — כלומר לחיצה ארוכה הייתה בלתי-נראית לחלוטין,
@@ -51,6 +67,8 @@ object KeyLog {
         // כמה זמן הוחזק. `downTime` הוא זמן תחילת הלחיצה, `eventTime` הוא
         // זמן האירוע הנוכחי — ההפרש הוא המשך בפועל, ולא הערכה.
         val heldMs = event.eventTime - event.downTime
+
+        if (kind == "long") lastLongPressElapsedMs = android.os.SystemClock.elapsedRealtime()
 
         val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
         val interactive = runCatching { pm?.isInteractive }.getOrNull()

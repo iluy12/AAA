@@ -14,6 +14,13 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- RISK B: חיוג ישיר לקו-הבדיקה -->
     <uses-permission android:name="android.permission.CALL_PHONE" />
+    <!-- זיהוי חיוג ל-SOS. המסלול הוא לחיצה ארוכה על כפתור הצד → השעון
+         מחייג למלווה, כלומר עוקף את האפליקציה — ובלי אלה האירוע לא קיים
+         אצלנו למרות שהוא אות חזק. PROCESS_OUTGOING_CALLS נותן את המספר,
+         READ_PHONE_STATE נותן את המשך, וששניהם יחד מבדילים בין חרטה
+         אחרי צלצול לבין פנייה אמיתית. -->
+    <uses-permission android:name="android.permission.PROCESS_OUTGOING_CALLS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!-- worn-gating (מתעלמים מדפיקות כשהשעון לא על היד) — נפילה-חזרה
          לחיישן דופק אם אין off-body sensor ייעודי -->
     <uses-permission android:name="android.permission.BODY_SENSORS" />
@@ -146,6 +153,16 @@
         <receiver
             android:name=".HeartRateSampler$Receiver"
             android:exported="false" />
+
+        <!-- שיחה יוצאת. exported=true נדרש כאן — זו שידורית של המערכת,
+             לא שלנו, ורק המערכת יכולה לשלוח אותה בזכות ההרשאה. -->
+        <receiver
+            android:name=".SosCallWatcher$OutgoingReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.NEW_OUTGOING_CALL" />
+            </intent-filter>
+        </receiver>
 
     </application>
 </manifest>
