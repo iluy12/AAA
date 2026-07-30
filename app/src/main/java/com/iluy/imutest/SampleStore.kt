@@ -156,12 +156,6 @@ object SampleStore {
         }
     }
 
-    fun count(context: Context): Int {
-        val file = File(context.filesDir, FILE_NAME)
-        if (!file.exists()) return 0
-        return try { file.readLines().size } catch (e: Exception) { 0 }
-    }
-
     private fun parse(line: String): Record? {
         val p = line.split(",")
         if (p.size < 8) return null
