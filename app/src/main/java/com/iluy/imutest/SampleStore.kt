@@ -69,7 +69,24 @@ object SampleStore {
          * השולחן עונה על שלושת התנאים.** ההגנה היחידה הייתה שהדופק מתיישן
          * אחרי שתי דקות, אבל בחלון שלפני כן ערך ישן נחשב תקין ונכנס לבסיס.
          */
-        val noContact: Int = 0
+        val noContact: Int = 0,
+        /**
+         * כיוון כוח הכובד בפרק היד, ב-m/s² כפול 10, ועוצמת התנועה.
+         *
+         * ⚠️ **אלה מספרים גולמיים בכוונה, ולא "שוכב/יושב".** השעון על פרק
+         * היד ולא על הגוף — אדם שוכב יכול להחזיק יד באוויר, ואדם עומד
+         * יכול להניח יד אופקית. סיווג תנוחה מראש היה סף אוכלוסייה
+         * בתחפושת, בדיוק כמו "+15 פעימות".
+         *
+         * לכן נרשם הווקטור, והתבנית האישית תתגלה מהנתונים — אותה שיטה
+         * שעבדה בדופק. `motion` הוא פיזור עוצמת התאוצה, והוא מודד חוסר-
+         * תנועה **עדין יותר ממונה הצעדים**: מי שיושב ומקליד אינו צובר
+         * צעדים, אבל היד שלו זזה.
+         */
+        val gravityX: Int = 0,
+        val gravityY: Int = 0,
+        val gravityZ: Int = 0,
+        val motion: Int = -1
     )
 
     fun append(context: Context, r: Record) {
@@ -82,7 +99,11 @@ object SampleStore {
             r.steps,
             r.stillMs,
             r.battery,
-            r.noContact
+            r.noContact,
+            r.gravityX,
+            r.gravityY,
+            r.gravityZ,
+            r.motion
         ).joinToString(",")
 
         val file = File(context.filesDir, FILE_NAME)
@@ -186,7 +207,11 @@ object SampleStore {
                 steps = p[5].toInt(),
                 stillMs = p[6].toLong(),
                 battery = p[7].toInt(),
-                noContact = if (p.size > 8) (p[8].toIntOrNull() ?: 0) else 0
+                noContact = if (p.size > 8) (p[8].toIntOrNull() ?: 0) else 0,
+                gravityX = if (p.size > 9) (p[9].toIntOrNull() ?: 0) else 0,
+                gravityY = if (p.size > 10) (p[10].toIntOrNull() ?: 0) else 0,
+                gravityZ = if (p.size > 11) (p[11].toIntOrNull() ?: 0) else 0,
+                motion = if (p.size > 12) (p[12].toIntOrNull() ?: -1) else -1
             )
         } catch (e: Exception) {
             null

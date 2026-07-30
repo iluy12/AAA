@@ -85,6 +85,20 @@ class TapDetectorService : Service(), SensorEventListener {
     private var burstInProgress = false
     private var burstSampleCount = 0
     private var burstNoContactCount = 0
+
+    // --- מד תאוצה בתוך הפרץ ---
+    //
+    // ⚠️ **רץ רק בתוך הפרץ, ולכן כמעט חינם.** אנחנו כבר ערים ומחזיקים
+    // wakelock 45 שניות בשביל הדופק; להוסיף חיישן שמוצהר על 0.00 מיליאמפר
+    // לאותו חלון כמעט לא מוסיף צריכה. רישום רצוף היה סיפור אחר.
+    private var accelSensor: Sensor? = null
+    private var accelCount = 0
+    private var accelSumX = 0.0
+    private var accelSumY = 0.0
+    private var accelSumZ = 0.0
+    // סכום וסכום-ריבועים של גודל התאוצה, לחישוב פיזור בלי לשמור מערך
+    private var accelMagSum = 0.0
+    private var accelMagSqSum = 0.0
     private var burstStartElapsedMs = 0L
     private var burstFirstSampleMs: Long? = null
     private var burstWakeLock: android.os.PowerManager.WakeLock? = null
@@ -394,6 +408,20 @@ class TapDetectorService : Service(), SensorEventListener {
             Sensor.TYPE_LOW_LATENCY_OFFBODY_DETECT -> {
                 wornState = (event.values.getOrNull(0) ?: 1f) >= 0.5f
             }
+            Sensor.TYPE_ACCELEROMETER -> {
+                // נאסף רק בתוך פרץ. מחוץ לו החיישן אינו רשום בכלל, אבל
+                // הבדיקה מגנה מפני אירוע שנותר בתור אחרי ביטול הרישום.
+                if (burstInProgress) {
+                    val x = event.values.getOrNull(0) ?: 0f
+                    val y = event.values.getOrNull(1) ?: 0f
+                    val z = event.values.getOrNull(2) ?: 0f
+                    accelSumX += x; accelSumY += y; accelSumZ += z
+                    val mag = kotlin.math.sqrt((x * x + y * y + z * z).toDouble())
+                    accelMagSum += mag
+                    accelMagSqSum += mag * mag
+                    accelCount++
+                }
+            }
             Sensor.TYPE_STEP_COUNTER -> {
                 // הערך מצטבר מאז האתחול, ולכן מה שמעניין הוא ההפרש.
                 // נשמר כ-Long למרות שהחיישן מוסר float: מעל ~16.7 מיליון
@@ -489,6 +517,9 @@ class TapDetectorService : Service(), SensorEventListener {
         burstSampleCount = 0
         burstNoContactCount = 0
         burstFirstSampleMs = null
+        accelCount = 0
+        accelSumX = 0.0; accelSumY = 0.0; accelSumZ = 0.0
+        accelMagSum = 0.0; accelMagSqSum = 0.0
         burstStartElapsedMs = SystemClock.elapsedRealtime()
 
         val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
@@ -497,6 +528,15 @@ class TapDetectorService : Service(), SensorEventListener {
         )?.also { runCatching { it.acquire(HeartRateSampler.BURST_MS + 10_000L) } }
 
         sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+
+        // מד התאוצה נרשם לאותו חלון בדיוק. SENSOR_DELAY_UI ולא NORMAL —
+        // צריך מספיק דגימות כדי שפיזור התנועה יהיה בעל משמעות, אבל לא
+        // 25Hz שמייצרים נפח מיותר.
+        accelSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        accelSensor?.let {
+            sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_UI)
+        }
+
         hrDiagnosticHandler.postDelayed(stopHeartRateBurstRunnable, HeartRateSampler.BURST_MS)
     }
 
@@ -513,6 +553,25 @@ class TapDetectorService : Service(), SensorEventListener {
      * וחציון על כל הפרץ היה כולל גם את הדגימות הראשונות שאחרי האתחול,
      * שהן הפחות מיוצבות. סוף הפרץ הוא החלק הנקי שלו.
      */
+    /**
+     * פיזור עוצמת התאוצה בפרץ, כפול 100. `-1` אם לא נאספו דגימות.
+     *
+     * ⚠️ **זה מדד חוסר-תנועה עדין הרבה יותר ממונה הצעדים.** מי שיושב
+     * ומקליד, או מי ששוכב ומזיז יד, אינו צובר אף צעד — ולכן מונה הצעדים
+     * מדווח "דומם לחלוטין". הפיזור כאן מבחין בין השניים.
+     *
+     * מחושב מסכום וסכום-ריבועים ולא ממערך שמור: 45 שניות ב-SENSOR_DELAY_UI
+     * הן מאות דגימות, ואין סיבה להחזיק אותן בזיכרון בשביל מספר אחד.
+     */
+    private fun motionSpread(): Int {
+        if (accelCount < 2) return -1
+        val mean = accelMagSum / accelCount
+        val variance = (accelMagSqSum / accelCount) - (mean * mean)
+        // שלילי קטן אפשרי משגיאות עיגול כשהתנועה אפסית
+        if (variance <= 0) return 0
+        return (kotlin.math.sqrt(variance) * 100).toInt()
+    }
+
     private fun persistBurst(firstMs: Long) {
         val nowMs = System.currentTimeMillis()
         val hour = java.util.Calendar.getInstance()
@@ -531,7 +590,13 @@ class TapDetectorService : Service(), SensorEventListener {
                 else (stepCountTotal - stepCountAtWindowStart).toInt(),
             stillMs = lastStepElapsedMs?.let { SystemClock.elapsedRealtime() - it } ?: -1L,
             battery = batteryPercent(),
-            noContact = burstNoContactCount
+            noContact = burstNoContactCount,
+            // כיוון כוח הכובד = ממוצע התאוצה על פני הפרץ. הממוצע מסנן את
+            // התנועות הקצרות ומשאיר את הכובד, שהוא הרכיב הקבוע היחיד.
+            gravityX = if (accelCount > 0) ((accelSumX / accelCount) * 10).toInt() else 0,
+            gravityY = if (accelCount > 0) ((accelSumY / accelCount) * 10).toInt() else 0,
+            gravityZ = if (accelCount > 0) ((accelSumZ / accelCount) * 10).toInt() else 0,
+            motion = motionSpread()
         )
 
         SampleStore.append(this, record)
@@ -551,7 +616,9 @@ class TapDetectorService : Service(), SensorEventListener {
             EventLog.log(
                 this, "INFO",
                 "baseline;${Baseline.describe(this)};stored=${SampleStore.count(this)};" +
-                    "resting=${Baseline.isResting(record)};" + levelPart
+                    "resting=${Baseline.isResting(record)};" +
+                    "grav=${record.gravityX},${record.gravityY},${record.gravityZ};" +
+                    "motion=${record.motion};accel_n=$accelCount;" + levelPart
             )
         }
     }
@@ -561,6 +628,7 @@ class TapDetectorService : Service(), SensorEventListener {
         burstInProgress = false
 
         heartRateSensor?.let { runCatching { sensorManager.unregisterListener(this, it) } }
+        accelSensor?.let { runCatching { sensorManager.unregisterListener(this, it) } }
 
         // ⚠️ `first_sample_ms` הוא המספר שבשבילו הפרץ מודד את עצמו: כמה זמן
         // החיישן האופטי צריך כדי להיתפס על העור אחרי הדלקה. לא ידענו אותו,
