@@ -86,7 +86,21 @@ object SampleStore {
         val gravityX: Int = 0,
         val gravityY: Int = 0,
         val gravityZ: Int = 0,
-        val motion: Int = -1
+        val motion: Int = -1,
+        /**
+         * הצורה **בתוך** הפרץ.
+         *
+         * ⚠️ **הנתון הזה כבר היה בידינו ונזרק.** כל פרץ מכיל כ-65 דגימות
+         * ב-3Hz, ושמרנו מהן חציון אחד — כלומר 21 שניות של עקומה הצטמצמו
+         * למספר. `trend` הוא ההפרש בין מחצית שנייה לראשונה, ולכן פרץ
+         * שהדופק עולה בתוכו נראה עכשיו שונה מפרץ יציב באותו חציון.
+         *
+         * זה לא מספיק בשביל "עליה-רוגע-עליה" — לזה צריך דגימה רציפה —
+         * אבל זה ההבדל בין נקודה לבין קטע.
+         */
+        val bpmMin: Int = -1,
+        val bpmMax: Int = -1,
+        val bpmTrend: Int = 0
     )
 
     fun append(context: Context, r: Record) {
@@ -103,7 +117,10 @@ object SampleStore {
             r.gravityX,
             r.gravityY,
             r.gravityZ,
-            r.motion
+            r.motion,
+            r.bpmMin,
+            r.bpmMax,
+            r.bpmTrend
         ).joinToString(",")
 
         val file = File(context.filesDir, FILE_NAME)
@@ -218,7 +235,10 @@ object SampleStore {
                 gravityX = if (p.size > 9) (p[9].toIntOrNull() ?: 0) else 0,
                 gravityY = if (p.size > 10) (p[10].toIntOrNull() ?: 0) else 0,
                 gravityZ = if (p.size > 11) (p[11].toIntOrNull() ?: 0) else 0,
-                motion = if (p.size > 12) (p[12].toIntOrNull() ?: -1) else -1
+                motion = if (p.size > 12) (p[12].toIntOrNull() ?: -1) else -1,
+                bpmMin = if (p.size > 13) (p[13].toIntOrNull() ?: -1) else -1,
+                bpmMax = if (p.size > 14) (p[14].toIntOrNull() ?: -1) else -1,
+                bpmTrend = if (p.size > 15) (p[15].toIntOrNull() ?: 0) else 0
             )
         } catch (e: Exception) {
             null

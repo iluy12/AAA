@@ -107,15 +107,26 @@ object FallReport {
         val lookback = if (count > 1) LOOKBACK_ROUGH_MS else LOOKBACK_MS
         val from = nowMs - lookback
         val records = SampleStore.since(context, from)
-        val withPulse = records.count { it.bpm > 0 }
+
         EventLog.log(
             context, "FALL",
-            "window;lookback_min=${lookback / 60000};records=${records.size};" +
-                "with_pulse=$withPulse;" +
-                "bpm_range=${records.filter { it.bpm > 0 }.let { r ->
-                    if (r.isEmpty()) "—" else "${r.minOf { it.bpm }}-${r.maxOf { it.bpm }}"
-                }}"
+            "window;lookback_min=${lookback / 60000};records=${records.size}"
         )
+
+        // ⚠️ **הסדרה עצמה, לא סיכום שלה.** הגרסה הראשונה רשמה ארבעה
+        // מספרים — כמה רשומות וטווח דופק — ובזה איבדה בדיוק את מה שהחלון
+        // הזה קיים בשבילו. כאן יושב כל החידוש של המוצר, ולכן נפרשת כל
+        // נקודה: כמה דקות לפני הדיווח, הדופק, המגמה בתוך הפרץ, התנוחה,
+        // וחוסר-התנועה.
+        for (r in records) {
+            val minutesBefore = (nowMs - r.timestampMs) / 60000
+            EventLog.log(
+                context, "FALL",
+                "  pt;t_minus=$minutesBefore;bpm=${r.bpm};min=${r.bpmMin};max=${r.bpmMax};" +
+                    "trend=${r.bpmTrend};still_s=${r.stillMs / 1000};steps=${r.steps};" +
+                    "grav=${r.gravityX},${r.gravityY},${r.gravityZ};motion=${r.motion}"
+            )
+        }
     }
 
     /**
@@ -159,17 +170,19 @@ object FallReport {
                 )
             }
 
-            // ⚠️ טקסטים זמניים. **המילים חייבות להיות של נבו** — זה הרגע
-            // הרגיש ביותר במוצר, וניסוח שגוי כאן שורף את הפיצ'ר.
-            val text = if (count > 1) {
+            val line = if (count > 1) {
                 Encouragements.afterSecondFall()
             } else {
                 Encouragements.afterFirstFall()
             }
+            val text = line.text
 
-            // נפילה שנייה — ישירות למסך העזרה, לא רק הודעה. זו המשמעות של
-            // "מהר יותר וגם ישיר יותר".
-            val target = if (count > 1) {
+            // ⚠️ **הודעה שהיא שאלה חייבת דרך לענות.** הכלל שקבע נבו: כן/לא,
+            // "כן" מרימה שיחה למלווה ו"לא" עונה "אם צריך אני כאן". שאלה בלי
+            // כפתורים היא רק עוד טקסט שנעלם, וזו בדיוק ההצעה שלא נענית.
+            val target = if (line.isQuestion) {
+                AskActivity.intentFor(context, line.text, "אחרי נפילה")
+            } else if (count > 1) {
                 // המפתח חייב להיות EXTRA_SOURCE ולא "source" — המסך קורא
                 // ממנו, ומחרוזת אחרת הייתה נותנת "לא ידוע" בלוג.
                 Intent(context, HelpMenuActivity::class.java)

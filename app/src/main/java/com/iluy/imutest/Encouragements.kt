@@ -54,13 +54,25 @@ object Encouragements {
      */
 
     /**
+     * הודעה, ואם היא שאלה — היא דורשת תשובת כן/לא.
+     *
+     * ⚠️ **הכלל שקבע נבו:** בכל מקום שיש שאלה, מוצגים "כן" ו"לא".
+     * **"כן" מרימה שיחה למלווה. "לא" עונה "אם צריך אני כאן" ונסגר.**
+     * הודעה שהיא שאלה בלי דרך לענות היא רק עוד טקסט שנעלם.
+     */
+    data class Line(val text: String, val isQuestion: Boolean = false)
+
+    /** התשובה ל"לא". לא מנדנדת, לא חוזרת. */
+    const val DECLINE_REPLY = "אם צריך אני כאן"
+
+    /**
      * הרגע עצמו: קצר, **סוגר**, בלי שאלות. המסך נעלם מיד אחריו.
      * זה לא הזמן לדבר איתו.
      */
     private val fallAcknowledge = listOf(
-        "נרשם.",
-        "קיבלתי.",
-        "בסדר. אני כאן"
+        "תודה שדיווחת",
+        "קיבלתי",
+        "בסדר, אני כאן"
     )
 
     /**
@@ -68,9 +80,12 @@ object Encouragements {
      * מעודד ומניע לפעולה, בלי לתחקר.
      */
     private val afterFirstFall = listOf(
-        "מחר זה יום חדש. אתה לא לבד בזה",
-        "נפילה אחת לא מוחקת את כל מה שעשית",
-        "אתה עדיין בדרך. שיחה קצרה עם מלווה יכולה לעזור עכשיו"
+        Line("אתה אריה, ואתה נלחם להשתנות. וזה מה שחשוב לה'"),
+        Line("תחזיק חזק באמונה ובשמחה. אתה בדרך!"),
+        Line("המאמצים שלך מגיעים עד כיסא הכבוד"),
+        Line("מצווה גדולה להיות בשמחה!"),
+        Line("רוצה נתחזק ביחד?", isQuestion = true),
+        Line("אתה לא לבד בזה, ואתה בדרך!")
     )
 
     /**
@@ -78,13 +93,17 @@ object Encouragements {
      * **ישיר ולא רומז** — ומגיע מהר יותר.
      */
     private val afterSecondFall = listOf(
-        "יום קשה. עכשיו זה הזמן להרים טלפון למלווה",
-        "אל תישאר עם זה לבד היום. תתקשר"
+        Line("יום קשה. תרים טלפון למלווה ותצא מזה"),
+        Line("אין ייאוש בעולם. הכל יהיה בסדר"),
+        Line("רוצה לדבר 2 דקות להתאפס?", isQuestion = true),
+        Line("רוצה נתעודד בטלפון?", isQuestion = true),
+        Line("אתה בדרך ליעד. כל אחד יכול לפספס פניה בדרך"),
+        Line("תרים את הראש - אתה בן של מלך")
     )
 
     fun fallAcknowledge(): String = fallAcknowledge.random()
-    fun afterFirstFall(): String = afterFirstFall.random()
-    fun afterSecondFall(): String = afterSecondFall.random()
+    fun afterFirstFall(): Line = afterFirstFall.random()
+    fun afterSecondFall(): Line = afterSecondFall.random()
 
     fun ordinary(): String = ordinary.random()
 

@@ -99,6 +99,29 @@ class TapDetectorService : Service(), SensorEventListener {
     // סכום וסכום-ריבועים של גודל התאוצה, לחישוב פיזור בלי לשמור מערך
     private var accelMagSum = 0.0
     private var accelMagSqSum = 0.0
+
+    // צורת הדופק בתוך הפרץ
+    private var burstBpmMin = Int.MAX_VALUE
+    private var burstBpmMax = Int.MIN_VALUE
+    private var burstFirstHalfSum = 0
+    private var burstFirstHalfN = 0
+    private var burstSecondHalfSum = 0
+    private var burstSecondHalfN = 0
+
+    /**
+     * האם אנחנו במחצית הראשונה של הפרץ.
+     *
+     * ⚠️ נמדד מ**הדגימה הראשונה** ולא מתחילת הפרץ: 23.7 השניות הראשונות
+     * הן נעילה אופטית ואין בהן נתונים, כך שחלוקה לפי תחילת הפרץ הייתה
+     * שמה את כל הדגימות במחצית השנייה והמגמה תמיד הייתה יוצאת אפס.
+     */
+    private val burstFirstHalf: Boolean
+        get() {
+            val first = burstFirstSampleMs ?: return true
+            val elapsedSinceFirst = SystemClock.elapsedRealtime() - first
+            val dataWindow = HeartRateSampler.BURST_MS - (first - burstStartElapsedMs)
+            return elapsedSinceFirst < dataWindow / 2
+        }
     private var burstStartElapsedMs = 0L
     private var burstFirstSampleMs: Long? = null
     private var burstWakeLock: android.os.PowerManager.WakeLock? = null
@@ -450,6 +473,19 @@ class TapDetectorService : Service(), SensorEventListener {
                     // "שעון על השולחן" מ"מנוחה אמיתית" — ראו Baseline.isResting.
                     if (bpm == null) burstNoContactCount++
                     if (burstFirstSampleMs == null) burstFirstSampleMs = SystemClock.elapsedRealtime()
+
+                    // הצורה בתוך הפרץ. שתי המחציות נצברות בנפרד כדי שאפשר
+                    // יהיה לדעת אם הדופק עלה או ירד **בתוך** אותן 21 שניות —
+                    // מידע שהיה בידינו ונזרק כשנשמר רק חציון.
+                    bpm?.let { v ->
+                        if (v < burstBpmMin) burstBpmMin = v
+                        if (v > burstBpmMax) burstBpmMax = v
+                        if (burstFirstHalf) {
+                            burstFirstHalfSum += v; burstFirstHalfN++
+                        } else {
+                            burstSecondHalfSum += v; burstSecondHalfN++
+                        }
+                    }
                 }
 
                 if (DebugConfig.DEBUG_TAG_ENABLED) {
@@ -520,6 +556,9 @@ class TapDetectorService : Service(), SensorEventListener {
         accelCount = 0
         accelSumX = 0.0; accelSumY = 0.0; accelSumZ = 0.0
         accelMagSum = 0.0; accelMagSqSum = 0.0
+        burstBpmMin = Int.MAX_VALUE; burstBpmMax = Int.MIN_VALUE
+        burstFirstHalfSum = 0; burstFirstHalfN = 0
+        burstSecondHalfSum = 0; burstSecondHalfN = 0
         burstStartElapsedMs = SystemClock.elapsedRealtime()
 
         val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
@@ -606,7 +645,14 @@ class TapDetectorService : Service(), SensorEventListener {
             gravityX = if (accelCount > 0) ((accelSumX / accelCount) * 10).toInt() else 0,
             gravityY = if (accelCount > 0) ((accelSumY / accelCount) * 10).toInt() else 0,
             gravityZ = if (accelCount > 0) ((accelSumZ / accelCount) * 10).toInt() else 0,
-            motion = motionSpread()
+            motion = motionSpread(),
+            bpmMin = if (burstBpmMin == Int.MAX_VALUE) -1 else burstBpmMin,
+            bpmMax = if (burstBpmMax == Int.MIN_VALUE) -1 else burstBpmMax,
+            // מגמה: מחצית שנייה פחות מחצית ראשונה. חיובי = הדופק עלה
+            // בתוך הפרץ, שלילי = ירד. אפס כשאין מספיק דגימות בשתי המחציות.
+            bpmTrend = if (burstFirstHalfN > 0 && burstSecondHalfN > 0) {
+                (burstSecondHalfSum / burstSecondHalfN) - (burstFirstHalfSum / burstFirstHalfN)
+            } else 0
         )
 
         SampleStore.append(this, record)

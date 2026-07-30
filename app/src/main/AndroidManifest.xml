@@ -135,6 +135,13 @@
                 android:resource="@xml/update_paths" />
         </provider>
 
+        <!-- שאלת כן/לא שנפתחת מהודעה. exported=false — רק אנחנו פותחים
+             אותה, ו"כן" מרימה שיחה, אז אין סיבה שאפליקציה אחרת תוכל. -->
+        <activity
+            android:name=".AskActivity"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+
         <receiver
             android:name=".BootReceiver"
             android:exported="true">
