@@ -22,6 +22,12 @@ import androidx.core.content.ContextCompat
  */
 class MainActivity : Activity() {
 
+    /** רישום מקשים בלבד. לא צורך את המקש — ראו KeyLog. */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        KeyLog.record(this, "main", event)
+        return super.dispatchKeyEvent(event)
+    }
+
     companion object {
         private const val LOG_DISPLAY_MAX_LINES = 150
         private const val REQUEST_BODY_SENSORS = 701

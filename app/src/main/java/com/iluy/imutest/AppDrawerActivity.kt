@@ -27,6 +27,12 @@ import androidx.core.content.ContextCompat
  */
 class AppDrawerActivity : Activity() {
 
+    /** רישום מקשים בלבד. לא צורך את המקש — ראו KeyLog. */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        KeyLog.record(this, "app_drawer", event)
+        return super.dispatchKeyEvent(event)
+    }
+
     companion object {
         fun launch(context: Context) {
             context.startActivity(Intent(context, AppDrawerActivity::class.java))

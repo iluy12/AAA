@@ -20,6 +20,12 @@ import androidx.core.content.ContextCompat
  */
 class HelpMenuActivity : Activity() {
 
+    /** רישום מקשים בלבד. לא צורך את המקש — ראו KeyLog. */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        KeyLog.record(this, "help_menu", event)
+        return super.dispatchKeyEvent(event)
+    }
+
     companion object {
         const val EXTRA_SOURCE = "extra_source"
 
