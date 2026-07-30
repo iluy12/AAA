@@ -177,13 +177,26 @@ class TapDetectorService : Service(), SensorEventListener {
     }
 
     private fun batteryFragment(): String {
+        val (percent, charging) = readBattery()
+        return "batt=$percent;charging=$charging"
+    }
+
+    /** אחוז הסוללה בלבד, לשמירה ברשומה. */
+    private fun batteryPercent(): Int = readBattery().first
+
+    /**
+     * קריאה **אחת** של ה-Intent הדביק, שממנה שני השדות.
+     *
+     * ⚠️ שתי קריאות נפרדות היו יכולות להחזיר שני רגעים שונים, וכך אחוז
+     * הסוללה ומצב הטעינה באותה שורה לא היו מתארים בהכרח את אותו רגע.
+     */
+    private fun readBattery(): Pair<Int, Boolean> {
         val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-            ?: return "batt=-1;charging=false"
+            ?: return -1 to false
         val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
         val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
         val percent = if (level < 0 || scale <= 0) -1 else level * 100 / scale
-        val charging = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0
-        return "batt=$percent;charging=$charging"
+        return percent to (intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0)
     }
 
     companion object {
@@ -520,15 +533,19 @@ class TapDetectorService : Service(), SensorEventListener {
 
         if (DebugConfig.DEBUG_TAG_ENABLED) {
             val level = Baseline.levelFor(this, hour)
+            // הסוגריים סביב ה-if אינם קוסמטיים — בלעדיהם צירוף מחרוזות
+            // עם ביטוי-תנאי מימין קורא בצורה שקל לטעות בה.
+            val levelPart = if (level != null && record.bpm > 0) {
+                "median=${"%.1f".format(level.medianBpm)};" +
+                    "mad=${"%.1f".format(level.madBpm)};src=${level.source};" +
+                    "dev=${"%.2f".format(Baseline.deviation(level, record.bpm))}"
+            } else {
+                "level=none"
+            }
             EventLog.log(
                 this, "INFO",
                 "baseline;${Baseline.describe(this)};stored=${SampleStore.count(this)};" +
-                    "resting=${Baseline.isResting(record)};" +
-                    if (level != null && record.bpm > 0)
-                        "median=${"%.1f".format(level.medianBpm)};" +
-                            "mad=${"%.1f".format(level.madBpm)};src=${level.source};" +
-                            "dev=${"%.2f".format(Baseline.deviation(level, record.bpm))}"
-                    else "level=none"
+                    "resting=${Baseline.isResting(record)};" + levelPart
             )
         }
     }

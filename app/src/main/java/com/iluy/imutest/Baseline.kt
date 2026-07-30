@@ -161,12 +161,15 @@ object Baseline {
 
     fun describe(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val filled = (0 until 24).count {
-            ((prefs.getString("h$it", "") ?: "").split(',')
-                .mapNotNull { v -> v.trim().toIntOrNull() }).size >= MIN_SAMPLES_PER_BUCKET
-        }
-        val total = (0 until 24).sumOf {
-            (prefs.getString("h$it", "") ?: "").split(',').count { v -> v.trim().toIntOrNull() != null }
+        var filled = 0
+        var total = 0
+        for (h in 0 until 24) {
+            val n = (prefs.getString("h$h", "") ?: "")
+                .split(',')
+                .mapNotNull { it.trim().toIntOrNull() }
+                .size
+            total += n
+            if (n >= MIN_SAMPLES_PER_BUCKET) filled++
         }
         return "buckets_ready=$filled/24;resting_samples=$total"
     }
