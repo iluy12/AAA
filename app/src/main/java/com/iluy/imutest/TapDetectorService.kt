@@ -484,6 +484,55 @@ class TapDetectorService : Service(), SensorEventListener {
 
     private val stopHeartRateBurstRunnable = Runnable { stopHeartRateBurst() }
 
+    /**
+     * שומר את הפרץ לזיכרון הקבוע, ומלמד ממנו את הבסיס אם הוא מנוחה.
+     *
+     * ⚠️ **זה הקישור שהיה חסר.** עד עכשיו כל מדידה נכנסה רק ללוג-הדיבאג
+     * שנדרס תוך שעות — החיישן מדד מצוין והמערכת לא זכרה כלום.
+     *
+     * ⚠️ **הדופק נלקח מהחציון הנע — תשע הדגימות האחרונות של הפרץ — ולא
+     * מדגימה בודדת ולא מכל ה-66.** דגימה אחרונה בודדת יכולה להיות חריגה,
+     * וחציון על כל הפרץ היה כולל גם את הדגימות הראשונות שאחרי האתחול,
+     * שהן הפחות מיוצבות. סוף הפרץ הוא החלק הנקי שלו.
+     */
+    private fun persistBurst(firstMs: Long) {
+        val nowMs = System.currentTimeMillis()
+        val hour = java.util.Calendar.getInstance()
+            .apply { timeInMillis = nowMs }
+            .get(java.util.Calendar.HOUR_OF_DAY)
+
+        val record = SampleStore.Record(
+            timestampMs = nowMs,
+            hourOfDay = hour,
+            // -1 כשהפרץ חזר ריק. נשמר במפורש ולא מושתק — פרץ ריק הוא
+            // מידע על אמינות החיישן, לא חסר-ערך.
+            bpm = if (burstSampleCount > 0) (hrSmoother.current() ?: -1) else -1,
+            samples = burstSampleCount,
+            firstSampleMs = firstMs,
+            steps = if (stepCountAtWindowStart < 0) 0
+                else (stepCountTotal - stepCountAtWindowStart).toInt(),
+            stillMs = lastStepElapsedMs?.let { SystemClock.elapsedRealtime() - it } ?: -1L,
+            battery = batteryPercent()
+        )
+
+        SampleStore.append(this, record)
+        Baseline.learn(this, record)
+
+        if (DebugConfig.DEBUG_TAG_ENABLED) {
+            val level = Baseline.levelFor(this, hour)
+            EventLog.log(
+                this, "INFO",
+                "baseline;${Baseline.describe(this)};stored=${SampleStore.count(this)};" +
+                    "resting=${Baseline.isResting(record)};" +
+                    if (level != null && record.bpm > 0)
+                        "median=${"%.1f".format(level.medianBpm)};" +
+                            "mad=${"%.1f".format(level.madBpm)};src=${level.source};" +
+                            "dev=${"%.2f".format(Baseline.deviation(level, record.bpm))}"
+                    else "level=none"
+            )
+        }
+    }
+
     private fun stopHeartRateBurst() {
         if (!burstInProgress) return
         burstInProgress = false
@@ -500,6 +549,8 @@ class TapDetectorService : Service(), SensorEventListener {
             "hr_burst_done;samples=$burstSampleCount;first_sample_ms=$firstMs;" +
                 "revived=${if (burstSampleCount > 0) "yes" else "no"}"
         )
+
+        persistBurst(firstMs)
 
         runCatching { burstWakeLock?.let { if (it.isHeld) it.release() } }
         burstWakeLock = null
