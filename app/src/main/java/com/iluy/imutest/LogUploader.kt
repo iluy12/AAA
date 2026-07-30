@@ -51,18 +51,42 @@ object LogUploader {
      */
     private val noisyMarkers = listOf("stroke;", "hr_sample;")
 
+    /**
+     * ⚠️ **תקרת בייטים, בנוסף לתקרת שורות.** ב-2026-07-30 העלאה נכשלה
+     * בשלושת השירותים ב-`SocketTimeoutException`: 500 שורות סריקה הן
+     * ארוכות בהרבה משורות דופק, והמשקל חצה את מה שחיבור השעון סובל.
+     * מגבלת-שורות לבדה אינה מגנה, כי אורך שורה משתנה פי כמה לפי סוגה.
+     *
+     * 60KB הם מתחת ל-80KB שנמדדו כנכשלים, עם מרווח.
+     */
+    private const val MAX_BYTES = 60_000
+
     fun upload(activity: Activity, onResult: (String) -> Unit) {
         Thread {
             val result = try {
                 val lines = EventLog.readAll(activity)
                     .filter { line -> noisyMarkers.none { line.contains(it) } }
                     .takeLast(MAX_LINES)
-                if (lines.isEmpty()) "הלוג ריק" else postWithFallbacks(lines.joinToString("\n"))
+                if (lines.isEmpty()) "הלוג ריק" else postWithFallbacks(trimToBytes(lines))
             } catch (e: Exception) {
                 "שגיאה: ${e.javaClass.simpleName}"
             }
             activity.runOnUiThread { onResult(result) }
         }.start()
+    }
+
+    /**
+     * מוריד שורות **מהראשונות** עד שהמשקל נכנס לתקרה, כך שהשורות
+     * האחרונות — הטריות והרלוונטיות — הן אלה שנשמרות.
+     */
+    private fun trimToBytes(lines: List<String>): String {
+        var start = 0
+        var bytes = lines.sumOf { it.toByteArray(Charsets.UTF_8).size + 1 }
+        while (start < lines.size - 1 && bytes > MAX_BYTES) {
+            bytes -= lines[start].toByteArray(Charsets.UTF_8).size + 1
+            start++
+        }
+        return lines.subList(start, lines.size).joinToString("\n")
     }
 
     /**
