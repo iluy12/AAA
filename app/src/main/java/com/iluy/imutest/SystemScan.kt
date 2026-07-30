@@ -54,6 +54,12 @@ object SystemScan {
     )
 
     /**
+     * ערך שנראה כמו מספר טלפון — 9 ספרות ומעלה, עם קידומת בינלאומית
+     * אופציונלית. רחב בכוונה: המטרה למצוא את השדה, לא לאמת את המספר.
+     */
+    private val PHONE_LIKE = Regex("\\+?\\d{9,15}")
+
+    /**
      * רצף של 5 ספרות ומעלה מוחלף ב-`***` ובשלוש האחרונות. 5 ולא 4 כדי
      * שערכי-הגדרה רגילים (timeouts, מזהים קצרים) יישארו קריאים.
      */
@@ -73,6 +79,7 @@ object SystemScan {
         runCatching { scanPackages(context, log) }.onFailure { log("scan_packages_failed;${it.javaClass.simpleName}") }
         runCatching { scanSettings(context, log) }.onFailure { log("scan_settings_failed;${it.javaClass.simpleName}") }
         runCatching { scanCallHandlers(context, log) }.onFailure { log("scan_call_failed;${it.javaClass.simpleName}") }
+        runCatching { scanProviders(context, log) }.onFailure { log("scan_providers_failed;${it.javaClass.simpleName}") }
         runCatching { scanLocation(context, log) }.onFailure { log("scan_location_failed;${it.javaClass.simpleName}") }
         log("scan_done")
     }
@@ -165,13 +172,46 @@ object SystemScan {
                 var matched = 0
                 while (c.moveToNext()) {
                     val key = c.getString(nameIdx) ?: continue
-                    if (!INTERESTING.containsMatchIn(key)) continue
-                    matched++
                     val value = if (valueIdx >= 0) c.getString(valueIdx) else null
-                    log("setting;table=$table;key=$key;value=${mask(value)}")
+
+                    // ⚠️ **שתי דרכי התאמה, והשנייה חשובה יותר.** התאמה לפי
+                    // שם-שדה מפספסת שדה שנקרא למשל `local_number_1` — אין
+                    // בו אף מילה שניחשנו. התאמה לפי **ערך** שנראה כמו מספר
+                    // טלפון מוצאת אותו בלי לנחש את השם, וגם בלי לקבע את
+                    // המספר עצמו בקוד.
+                    val byKey = INTERESTING.containsMatchIn(key)
+                    val byValue = value != null && PHONE_LIKE.containsMatchIn(value)
+                    if (!byKey && !byValue) continue
+
+                    matched++
+                    log(
+                        "setting;table=$table;key=$key;value=${mask(value)};" +
+                            "hit=${if (byValue) "value" else "key"}"
+                    )
                 }
                 log("settings_scanned;table=$table;total=${c.count};matched=$matched")
             }
+        }
+    }
+
+    /**
+     * ספקי-תוכן של החבילות. `com.sgtc.provider` הוא המועמד הסביר למקום
+     * שבו יושבים נתוני היצרן — היסטוריית דופק, ואם לא ב-Settings אז גם
+     * מספר ה-SOS.
+     *
+     * כאן רק **ממפים authorities**. שאילתה בפועל דורשת לדעת את שם הטבלה,
+     * ואי-אפשר לנחש אותה — קודם רואים מה קיים.
+     */
+    private fun scanProviders(context: Context, log: (String) -> Unit) {
+        val pm = context.packageManager
+        val providers = pm.queryContentProviders(null, 0, 0) ?: return
+        log("providers;total=${providers.size}")
+        for (p in providers) {
+            val auth = p.authority ?: continue
+            val pkg = p.packageName ?: ""
+            // רק של היצרן ושל אנשי-קשר — השאר רועש ולא רלוונטי
+            if (!pkg.contains("sgtc") && !pkg.contains("com.sg") && !auth.contains("contact")) continue
+            log("provider;auth=$auth;pkg=$pkg;exported=${p.exported};read=${p.readPermission}")
         }
     }
 
