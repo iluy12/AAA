@@ -59,7 +59,17 @@ object SampleStore {
         val firstSampleMs: Long,
         val steps: Int,
         val stillMs: Long,
-        val battery: Int
+        val battery: Int,
+        /**
+         * כמה דגימות בפרץ הגיעו **בלי מגע עם העור**.
+         *
+         * ⚠️ **בלי השדה הזה הבסיס מורעל, וזה נמדד.** ב-2026-07-30 בשעה
+         * 21:51 השעון היה מחוץ ליד ו-104 מתוך 125 הדגימות היו ללא מגע.
+         * "מנוחה" מוגדרת כדופק תקין + אפס צעדים + חוסר תנועה — **ושעון על
+         * השולחן עונה על שלושת התנאים.** ההגנה היחידה הייתה שהדופק מתיישן
+         * אחרי שתי דקות, אבל בחלון שלפני כן ערך ישן נחשב תקין ונכנס לבסיס.
+         */
+        val noContact: Int = 0
     )
 
     fun append(context: Context, r: Record) {
@@ -71,7 +81,8 @@ object SampleStore {
             r.firstSampleMs,
             r.steps,
             r.stillMs,
-            r.battery
+            r.battery,
+            r.noContact
         ).joinToString(",")
 
         val file = File(context.filesDir, FILE_NAME)
@@ -156,6 +167,12 @@ object SampleStore {
         }
     }
 
+    /**
+     * ⚠️ **סובלני לרשומות ישנות בנות 8 שדות.** `noContact` נוסף אחרי
+     * שכבר נאספו רשומות, ופענוח נוקשה היה מוחק את כל ההיסטוריה שנאספה עד
+     * כה. רשומה ישנה מקבלת 0 — כלומר תיחשב "עם מגע", וזו ההנחה שהייתה
+     * בתוקף כשהיא נכתבה ממילא.
+     */
     private fun parse(line: String): Record? {
         val p = line.split(",")
         if (p.size < 8) return null
@@ -168,7 +185,8 @@ object SampleStore {
                 firstSampleMs = p[4].toLong(),
                 steps = p[5].toInt(),
                 stillMs = p[6].toLong(),
-                battery = p[7].toInt()
+                battery = p[7].toInt(),
+                noContact = if (p.size > 8) (p[8].toIntOrNull() ?: 0) else 0
             )
         } catch (e: Exception) {
             null

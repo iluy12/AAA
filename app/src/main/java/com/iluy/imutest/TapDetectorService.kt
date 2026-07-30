@@ -84,6 +84,7 @@ class TapDetectorService : Service(), SensorEventListener {
     // --- פרץ דופק (ראו HeartRateSampler) ---
     private var burstInProgress = false
     private var burstSampleCount = 0
+    private var burstNoContactCount = 0
     private var burstStartElapsedMs = 0L
     private var burstFirstSampleMs: Long? = null
     private var burstWakeLock: android.os.PowerManager.WakeLock? = null
@@ -417,6 +418,9 @@ class TapDetectorService : Service(), SensorEventListener {
                 // וזה המספר שיקבע בהמשך אם 45 שניות הן יותר מהנדרש.
                 if (burstInProgress) {
                     burstSampleCount++
+                    // דגימה בלי מגע עם העור. נספרת בנפרד כי היא מה שמבדיל
+                    // "שעון על השולחן" מ"מנוחה אמיתית" — ראו Baseline.isResting.
+                    if (bpm == null) burstNoContactCount++
                     if (burstFirstSampleMs == null) burstFirstSampleMs = SystemClock.elapsedRealtime()
                 }
 
@@ -483,6 +487,7 @@ class TapDetectorService : Service(), SensorEventListener {
 
         burstInProgress = true
         burstSampleCount = 0
+        burstNoContactCount = 0
         burstFirstSampleMs = null
         burstStartElapsedMs = SystemClock.elapsedRealtime()
 
@@ -525,7 +530,8 @@ class TapDetectorService : Service(), SensorEventListener {
             steps = if (stepCountAtWindowStart < 0) 0
                 else (stepCountTotal - stepCountAtWindowStart).toInt(),
             stillMs = lastStepElapsedMs?.let { SystemClock.elapsedRealtime() - it } ?: -1L,
-            battery = batteryPercent()
+            battery = batteryPercent(),
+            noContact = burstNoContactCount
         )
 
         SampleStore.append(this, record)
@@ -563,7 +569,8 @@ class TapDetectorService : Service(), SensorEventListener {
         val firstMs = burstFirstSampleMs?.let { it - burstStartElapsedMs } ?: -1L
         EventLog.log(
             this, "INFO",
-            "hr_burst_done;samples=$burstSampleCount;first_sample_ms=$firstMs;" +
+            "hr_burst_done;samples=$burstSampleCount;no_contact=$burstNoContactCount;" +
+                "first_sample_ms=$firstMs;" +
                 "revived=${if (burstSampleCount > 0) "yes" else "no"}"
         )
 
