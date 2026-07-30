@@ -132,5 +132,11 @@
             </intent-filter>
         </receiver>
 
+        <!-- מקבל את האזעקה השעתית של התזכורת לדווח. exported=false — רק
+             AlarmManager שלנו מפעיל אותו, אין סיבה שאפליקציה אחרת תוכל. -->
+        <receiver
+            android:name=".ReportReminder$Receiver"
+            android:exported="false" />
+
     </application>
 </manifest>

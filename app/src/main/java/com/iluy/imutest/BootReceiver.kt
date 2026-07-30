@@ -10,6 +10,9 @@ class BootReceiver : BroadcastReceiver() {
             // רק אם השאלון כבר הושלם — אחרת עדיפה פתיחה יזומה של האפליקציה קודם
             if (LocalStore.isQuestionnaireDone(context)) {
                 TapDetectorService.start(context)
+                // ⚠️ אזעקות אינן שורדות כיבוי — בלי השורה הזו התזכורת
+                // השעתית נעלמת בשקט אחרי כל אתחול.
+                ReportReminder.schedule(context)
                 EventLog.log(context, "INFO", "boot_auto_start")
             }
         }

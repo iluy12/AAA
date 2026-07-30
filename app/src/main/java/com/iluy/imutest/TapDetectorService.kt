@@ -322,6 +322,9 @@ class TapDetectorService : Service(), SensorEventListener {
                 hrLastSummaryElapsedMs = SystemClock.elapsedRealtime()
                 hrDiagnosticHandler.postDelayed(hrDiagnosticSummaryRunnable, 60_000L)
             }
+            // התזכורת השעתית. כאן ולא ב-onCreate כדי שהתקנה מחדש תחדש
+            // אותה מיד, בלי לחכות לאתחול המכשיר.
+            ReportReminder.schedule(this)
             isListening = true
             EventLog.log(this, "INFO", "tap_service_started")
         }
