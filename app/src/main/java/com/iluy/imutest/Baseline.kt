@@ -169,6 +169,20 @@ object Baseline {
     fun deviation(level: Level, currentBpm: Int): Double =
         (currentBpm - level.medianBpm) / level.madBpm
 
+    /**
+     * מוחק את הבסיס ומתחיל נקי.
+     *
+     * ⚠️ נדרש אחרי תיקון שמשנה **מה נחשב מנוחה**. 15 דגימות המנוחה
+     * הראשונות נאספו לפני שנוסף התנאי על מגע עם העור, כלומר חלקן עשויות
+     * להגיע משעון שהיה מונח על השולחן. בסיס מזוהם אינו ניתן לתיקון
+     * בדיעבד — אי-אפשר לדעת אילו דגימות פגומות — ולכן מחיקה בתחילת האיסוף
+     * זולה, ואותה מחיקה בעוד חודש יקרה מאוד.
+     */
+    fun reset(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
+        EventLog.log(context, "INFO", "baseline_reset")
+    }
+
     fun describe(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         var filled = 0

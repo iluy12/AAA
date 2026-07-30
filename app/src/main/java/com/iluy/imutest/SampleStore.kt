@@ -194,6 +194,13 @@ object SampleStore {
      * כה. רשומה ישנה מקבלת 0 — כלומר תיחשב "עם מגע", וזו ההנחה שהייתה
      * בתוקף כשהיא נכתבה ממילא.
      */
+    /** מוחק את כל הרשומות ומאפס את המונה. ראו [Baseline.reset]. */
+    fun clear(context: Context) {
+        runCatching { File(context.filesDir, FILE_NAME).delete() }
+        setCount(context, 0)
+        EventLog.log(context, "INFO", "sample_store_cleared")
+    }
+
     private fun parse(line: String): Record? {
         val p = line.split(",")
         if (p.size < 8) return null

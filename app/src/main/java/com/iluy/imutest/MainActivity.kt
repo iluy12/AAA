@@ -187,6 +187,16 @@ class MainActivity : Activity() {
             // בבת-אחת, ואילו רצה מעצמה היא הייתה דוחקת החוצה את סיכומי
             // הדופק — כלומר הורסת בדיוק את בדיקת-הלילה שבשבילה הכל נבנה.
             // הסדר הנכון: קודם לשלוח את לוג-הלילה, אחר-כך לסרוק, ולשלוח שוב.
+            // מחיקת הבסיס והרשומות. נחוץ אחרי תיקון שמשנה מה נחשב מנוחה —
+            // בסיס מזוהם אינו ניתן לתיקון בדיעבד, ראו Baseline.reset.
+            container.addView(secondaryButton("אפס בסיס דופק") {
+                Baseline.reset(this)
+                SampleStore.clear(this)
+                logDisplay?.apply {
+                    text = "הבסיס והרשומות נמחקו. האיסוף מתחיל מחדש."
+                    visibility = android.view.View.VISIBLE
+                }
+            })
             container.addView(secondaryButton("סרוק את השעון") {
                 // ברקע: getInstalledPackages עם כל הרכיבים לוקח שניות על
                 // המכשיר הזה, וכל שורה גם נכתבת לקובץ. על החוט הראשי זה

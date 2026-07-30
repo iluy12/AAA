@@ -186,27 +186,54 @@ object SystemScan {
      * ⚠️ הערכים מוסתרים ב-[mask] לפני הרישום. הלוג עולה לשירות ציבורי,
      * ומספר של מלווה אסור שיתפרסם.
      */
+    /**
+     * נתיבים לניסיון בתוך כל מסד.
+     *
+     * ⚠️ **נגזר ממדידה.** בסבב הראשון פנייה ל-authority בלי נתיב החזירה
+     * `IllegalStateException` בכל אחד מהם — **ולא `SecurityException`.**
+     * כלומר הגישה פתוחה, פשוט חסרה כתובת. המחרוזת הריקה נשארת ראשונה כדי
+     * שספק שכן עונה בלי נתיב יימצא מיד.
+     *
+     * `t_` הוא תחילית טבלה נפוצה אצל יצרנים סיניים.
+     */
+    private val COMMON_PATHS = listOf(
+        "", "sos", "contact", "contacts", "list", "number", "phone",
+        "data", "info", "item", "record", "records", "t_sos", "t_contact"
+    )
+
     private fun readVendorProviders(context: Context, log: (String) -> Unit) {
         for (auth in VENDOR_URIS) {
-            val uri = Uri.parse("content://$auth")
-            runCatching {
-                context.contentResolver.query(uri, null, null, null, null)?.use { c ->
-                    log("read;auth=$auth;rows=${c.count};cols=${c.columnNames.joinToString("|")}")
-                    var printed = 0
-                    while (c.moveToNext() && printed < 5) {
-                        val cells = (0 until c.columnCount).joinToString(";") { i ->
-                            val v = runCatching { c.getString(i) }.getOrNull()
-                            "${c.getColumnName(i)}=${mask(v)}"
+            var found = false
+            for (path in COMMON_PATHS) {
+                val uri = Uri.parse(if (path.isEmpty()) "content://$auth" else "content://$auth/$path")
+                runCatching {
+                    context.contentResolver.query(uri, null, null, null, null)?.use { c ->
+                        found = true
+                        log("read;auth=$auth;path=$path;rows=${c.count};cols=${c.columnNames.joinToString("|")}")
+                        var printed = 0
+                        while (c.moveToNext() && printed < 3) {
+                            val cells = (0 until c.columnCount).joinToString(";") { i ->
+                                "${c.getColumnName(i)}=${mask(runCatching { c.getString(i) }.getOrNull())}"
+                            }
+                            log("  row;$cells")
+                            printed++
                         }
-                        log("  row;$cells")
-                        printed++
                     }
-                } ?: log("read;auth=$auth;result=null_cursor")
-            }.onFailure {
-                // כישלון צפוי כשה-authority דורש נתיב. שם החריגה מבחין בין
-                // "צריך נתיב" לבין "אין הרשאה", ואלה שתי מסקנות שונות.
-                log("read;auth=$auth;failed=${it.javaClass.simpleName}")
+                }.onFailure {
+                    // ⚠️ **הודעת השגיאה, לא רק שם המחלקה.** ספקים רבים
+                    // כותבים בה במפורש "Unknown URI ..." ולפעמים מונים את
+                    // הנתיבים שהם כן מכירים — כלומר התשובה עצמה יכולה
+                    // להיות בתוך הכישלון, וניחוש נוסף מיותר.
+                    if (path.isEmpty()) {
+                        log(
+                            "read;auth=$auth;failed=${it.javaClass.simpleName};" +
+                                "msg=${mask(it.message?.take(80))}"
+                        )
+                    }
+                }
+                if (found) break
             }
+            if (!found) log("read;auth=$auth;no_path_worked")
         }
     }
 
