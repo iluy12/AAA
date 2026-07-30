@@ -47,22 +47,68 @@ object PlaceTracker {
         ) == PackageManager.PERMISSION_GRANTED
 
     /**
-     * המיקום האחרון הידוע, בלי לבקש קריאה חדשה.
+     * ⚠️ **"בחינם" התברר כ"ריק".** הגרסה הראשונה קראה רק את המיקום האחרון
+     * הידוע, בהנחה שמדידת המיקום השעתית של היצרן משאירה ערך במטמון של
+     * אנדרואיד. בלוג של 2026-07-31 חזר `place_m=-1` בכל פרץ למרות שההרשאה
+     * ניתנה — כלומר אין מטמון כזה, והיצרן כותב למסד שלו בלבד.
      *
-     * ⚠️ **`getLastKnownLocation` ולא בקשת עדכון.** בקשה פעילה מדליקה את
-     * המקלט ועולה סוללה; המיקום האחרון הוא בחינם לגמרי. במכשיר הזה
-     * המדידה של היצרן רצה ממילא כל שעה, כלומר תמיד יש ערך טרי מספיק
-     * לשאלה "אותו מקום או לא".
+     * לכן נדרשת בקשה אמיתית אחת. היא לא רצה בכל פרץ אלא לכל היותר
+     * [REFRESH_INTERVAL_MS], כי מיקום כמעט לא משתנה בין פרץ לפרץ ואין
+     * סיבה להדליק מקלט כל שתי דקות.
      */
+    private const val REFRESH_INTERVAL_MS = 30 * 60 * 1000L
+    private var lastRequestElapsedMs = 0L
+
     private fun lastKnown(context: Context): Location? {
         if (!hasPermission(context)) return null
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
-        // רשת לפני לוויינים — עובד בתוך מבנים ובחינם. ראו הערת-המחלקה.
-        for (p in listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)) {
-            val loc = runCatching { lm.getLastKnownLocation(p) }.getOrNull()
-            if (loc != null) return loc
+
+        // רשת לפני לוויינים — עובד בתוך מבנים וזול בהרבה. ראו הערת-המחלקה.
+        val providers = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+
+        val cached = providers.firstNotNullOfOrNull {
+            runCatching { lm.getLastKnownLocation(it) }.getOrNull()
         }
-        return null
+
+        val now = android.os.SystemClock.elapsedRealtime()
+        val due = lastRequestElapsedMs == 0L || now - lastRequestElapsedMs > REFRESH_INTERVAL_MS
+        if (due) {
+            lastRequestElapsedMs = now
+            requestOneFix(context, lm, providers)
+        }
+
+        // הערך שחוזר עכשיו הוא עדיין הישן — הבקשה א-סינכרונית והתוצאה
+        // תיכנס למטמון לפרץ הבא. זה מקובל: השאלה היא "אותו מקום או לא",
+        // ופרץ אחד של פיגור אינו משנה אותה.
+        return cached
+    }
+
+    /**
+     * בקשה בודדת, ומיד מתנתקים.
+     *
+     * ⚠️ `requestSingleUpdate` ולא `requestLocationUpdates` מתמשך: מאזין
+     * שנשאר רשום מחזיק את המקלט דלוק ושורף סוללה בשקט — וזו בדיוק סוג
+     * התקלה שלא רואים עד שמסתכלים על צריכה של יממה.
+     */
+    private fun requestOneFix(context: Context, lm: LocationManager, providers: List<String>) {
+        val provider = providers.firstOrNull { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }
+            ?: return
+        runCatching {
+            lm.requestSingleUpdate(
+                provider,
+                object : android.location.LocationListener {
+                    override fun onLocationChanged(location: Location) {
+                        EventLog.log(context, "INFO", "location_fix;provider=$provider;acc=${location.accuracy.toInt()}")
+                    }
+                    override fun onStatusChanged(p: String?, s: Int, e: android.os.Bundle?) {}
+                    override fun onProviderEnabled(p: String) {}
+                    override fun onProviderDisabled(p: String) {}
+                },
+                android.os.Looper.getMainLooper()
+            )
+        }.onFailure {
+            EventLog.log(context, "INFO", "location_request_failed;${it.javaClass.simpleName}")
+        }
     }
 
     /**
