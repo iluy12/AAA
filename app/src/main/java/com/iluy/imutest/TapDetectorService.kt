@@ -322,7 +322,12 @@ class TapDetectorService : Service(), SensorEventListener {
             // שנכשל: ב-2026-07-30 הזרם נפסק ב-05:51 ולא חזר עד 14:06,
             // כולל שעה שבה נבו היה ער והלך. עכשיו הוא נרשם מחדש בכל פרץ —
             // ראו HeartRateSampler.
-            HeartRateSampler.scheduleNext(this, null)
+            //
+            // ⚠️ פרץ **מיד**, ולא תזמון בלבד. בהתקנה של build-76 נרשם
+            // `in_ms=600000` — כלומר עשר דקות עד הדגימה הראשונה, ובהן אין
+            // שום נתון ואין דרך לדעת אם הכל עובד. גם במוצר עצמו, אחרי
+            // אתחול, עדיף לדעת מיד ולא בעוד רבע שעה.
+            startHeartRateBurst()
 
             // מונה-הצעדים, שוב עם העדפה לוריאנט ה-wakeup מאותה סיבה כמו
             // בדופק. ⚠️ הוא **אינו** דורש הרשאה כאן רק מפני ש-targetSdk
@@ -348,6 +353,8 @@ class TapDetectorService : Service(), SensorEventListener {
             // מאזין מצב-שיחה, למשך השיחה. נרשם בשירות ולא ב-Activity כי
             // החיוג קורה כשאף מסך שלנו אינו בחזית.
             SosCallWatcher.startWatching(this)
+            // מסך נדלק/נכבה. רישום בקוד ולא במניפסט — ראו ScreenWakeWatcher.
+            ScreenWakeWatcher.startWatching(this)
             isListening = true
             EventLog.log(this, "INFO", "tap_service_started")
         }
@@ -356,6 +363,7 @@ class TapDetectorService : Service(), SensorEventListener {
 
     override fun onDestroy() {
         sensorManager.unregisterListener(this)
+        ScreenWakeWatcher.stopWatching(this)
         isListening = false
         if (hrDiagnosticStarted) {
             hrDiagnosticHandler.removeCallbacks(hrDiagnosticSummaryRunnable)
