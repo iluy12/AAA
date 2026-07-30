@@ -154,6 +154,11 @@
             android:name=".HeartRateSampler$Receiver"
             android:exported="false" />
 
+        <!-- ההודעה המעודדת שמגיעה 5-15 דקות אחרי דיווח נפילה. -->
+        <receiver
+            android:name=".FallReport$Receiver"
+            android:exported="false" />
+
         <!-- שיחה יוצאת. exported=true נדרש כאן — זו שידורית של המערכת,
              לא שלנו, ורק המערכת יכולה לשלוח אותה בזכות ההרשאה. -->
         <receiver
