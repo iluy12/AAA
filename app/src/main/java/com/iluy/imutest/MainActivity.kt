@@ -31,6 +31,7 @@ class MainActivity : Activity() {
     companion object {
         private const val LOG_DISPLAY_MAX_LINES = 150
         private const val REQUEST_BODY_SENSORS = 701
+        private const val REQUEST_LOCATION = 702
 
         fun start(context: Context) {
             val intent = Intent(context, MainActivity::class.java).apply {
@@ -57,6 +58,15 @@ class MainActivity : Activity() {
         ) {
             androidx.core.app.ActivityCompat.requestPermissions(
                 this, arrayOf(android.Manifest.permission.BODY_SENSORS), REQUEST_BODY_SENSORS
+            )
+        }
+
+        // מיקום: רק "בבית או לא". נקרא המיקום האחרון הידוע ולא מודלק
+        // מקלט, אז העלות אפסית — אבל ההרשאה עדיין נדרשת. סירוב מחזיר
+        // אות אחד פחות ולא שובר כלום.
+        if (!PlaceTracker.hasPermission(this)) {
+            androidx.core.app.ActivityCompat.requestPermissions(
+                this, arrayOf(android.Manifest.permission.ACCESS_FINE_LOCATION), REQUEST_LOCATION
             )
         }
 

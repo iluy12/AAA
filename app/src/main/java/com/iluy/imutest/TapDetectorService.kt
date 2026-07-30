@@ -674,7 +674,9 @@ class TapDetectorService : Service(), SensorEventListener {
                 "baseline;${Baseline.describe(this)};stored=${SampleStore.count(this)};" +
                     "resting=${Baseline.isResting(record)};" +
                     "grav=${record.gravityX},${record.gravityY},${record.gravityZ};" +
-                    "motion=${record.motion};accel_n=$accelCount;" + levelPart
+                    "motion=${record.motion};accel_n=$accelCount;" +
+                    "place_m=${PlaceTracker.distanceFromUsual(this)};" +
+                    "loc_perm=${PlaceTracker.hasPermission(this)};" + levelPart
             )
         }
     }

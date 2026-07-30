@@ -21,6 +21,10 @@
          אחרי צלצול לבין פנייה אמיתית. -->
     <uses-permission android:name="android.permission.PROCESS_OUTGOING_CALLS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- "בבית או לא" — לא "איפה הוא". נקרא רק המיקום האחרון הידוע, בלי
+         להדליק מקלט. ⚠️ חדר אינו ניתן לחישה בשום דיוק; מה שנמדד הוא האם
+         הוא במקום שבו הוא נמצא בדרך כלל. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <!-- worn-gating (מתעלמים מדפיקות כשהשעון לא על היד) — נפילה-חזרה
          לחיישן דופק אם אין off-body sensor ייעודי -->
     <uses-permission android:name="android.permission.BODY_SENSORS" />
