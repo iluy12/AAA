@@ -65,10 +65,15 @@ object SystemScan {
     fun run(context: Context) {
         val log = { detail: String -> EventLog.log(context, "SCAN", detail) }
         log("scan_start")
-        runCatching { scanLocation(context, log) }.onFailure { log("scan_location_failed;${it.javaClass.simpleName}") }
+        // ⚠️ **הסדר כאן הוא סדר-שרידות, לא סדר-חשיבות.** ההעלאה שומרת את
+        // 500 השורות האחרונות, והסריקה מייצרת יותר מזה — בסבב הראשון
+        // בדיקת המיקום רצה ראשונה ולכן נדחקה החוצה, וחזרנו בלי התשובה
+        // היחידה שבשבילה הוספתי אותה. לכן: הרועש (חבילות) קודם, והקצר
+        // והמבוקש (מיקום) בסוף, במקום שמובטח לשרוד.
         runCatching { scanPackages(context, log) }.onFailure { log("scan_packages_failed;${it.javaClass.simpleName}") }
         runCatching { scanSettings(context, log) }.onFailure { log("scan_settings_failed;${it.javaClass.simpleName}") }
         runCatching { scanCallHandlers(context, log) }.onFailure { log("scan_call_failed;${it.javaClass.simpleName}") }
+        runCatching { scanLocation(context, log) }.onFailure { log("scan_location_failed;${it.javaClass.simpleName}") }
         log("scan_done")
     }
 
