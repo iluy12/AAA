@@ -1,6 +1,7 @@
 package com.iluy.imutest
 
 import android.content.Context
+import android.os.PowerManager
 import android.view.KeyEvent
 
 /**
@@ -17,20 +18,49 @@ import android.view.KeyEvent
 object KeyLog {
 
     /**
-     * נרשמת רק הלחיצה הראשונה (`repeatCount == 0`) ורק ACTION_DOWN — מקש
-     * מוחזק היה מייצר עשרות שורות זהות ודוחק את סיכומי-הדופק מההעלאה.
+     * ⚠️ **הגרסה הקודמת סיננה בדיוק את מה שצריך למדוד.** היא רשמה רק
+     * `ACTION_DOWN` עם `repeatCount == 0`, ולחיצה ארוכה מייצרת אירועים עם
+     * `repeatCount > 0` — כלומר לחיצה ארוכה הייתה בלתי-נראית לחלוטין,
+     * והמסקנה הייתה "הכפתור לא תומך בלחיצה ארוכה".
      *
-     * `screen` מאפשר לדעת מאיזה מסך בא האירוע, וזה בדיוק מה שחסר בפעם
-     * הקודמת.
+     * מה שנרשם עכשיו, וכל אחד מהם נחוץ לתבנית אחרת:
+     *
+     * | אירוע | בשביל מה |
+     * |---|---|
+     * | `down` ראשונה | לספור לחיצות — אחת, שתיים, שלוש |
+     * | `long` (הדגל של אנדרואיד) | לחיצה ארוכה, כמו לחיוג |
+     * | `up` עם `held_ms` | **המדד המדויק** — כמה זמן הוחזק בפועל |
+     *
+     * `interactive` הוא מצב המסך. הוא קריטי לרעיון "מסך כבוי + לחיצה
+     * כפולה = דיווח נפילה": בלעדיו אי-אפשר להבחין בין לחיצה כפולה בחשכה
+     * לבין לחיצה כפולה על מסך פעיל, ואלה שתי מחוות שונות.
+     *
+     * חזרות-אמצע (`repeatCount > 0` בלי דגל long) עדיין מסוננות — מקש
+     * מוחזק מייצר עשרות מהן ודוחק את סיכומי-הדופק מההעלאה.
      */
     fun record(context: Context, screen: String, event: KeyEvent) {
         if (!DebugConfig.DEBUG_TAG_ENABLED) return
-        if (event.action != KeyEvent.ACTION_DOWN || event.repeatCount != 0) return
+
+        val kind = when {
+            event.action == KeyEvent.ACTION_UP -> "up"
+            event.isLongPress -> "long"
+            event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 -> "down"
+            else -> return
+        }
+
+        // כמה זמן הוחזק. `downTime` הוא זמן תחילת הלחיצה, `eventTime` הוא
+        // זמן האירוע הנוכחי — ההפרש הוא המשך בפועל, ולא הערכה.
+        val heldMs = event.eventTime - event.downTime
+
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val interactive = runCatching { pm?.isInteractive }.getOrNull()
+
         EventLog.log(
             context, "DEBUG",
-            "key;screen=$screen;code=${event.keyCode};" +
+            "key;kind=$kind;screen=$screen;code=${event.keyCode};" +
                 "name=${KeyEvent.keyCodeToString(event.keyCode)};" +
-                "device=${event.deviceId};source=${event.source}"
+                "held_ms=$heldMs;repeat=${event.repeatCount};" +
+                "interactive=$interactive;device=${event.deviceId}"
         )
     }
 }
