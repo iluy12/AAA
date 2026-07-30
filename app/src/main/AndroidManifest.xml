@@ -6,6 +6,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- הפעלה מחדש אחרי ריסטרט לשעון -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- להחזיק את המעבד ער במשך פרץ-דופק. האזעקה מעירה אותו רק לרגע מסירת
+         ה-broadcast, ובלי זה הוא היה חוזר לישון לפני שהחיישן מסר דגימה
+         אחת — כלומר הפרץ היה חוזר ריק וזה היה נראה כמו התקלה שבאנו לתקן. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- שאלה 9 בשאלון: הקלטה אישית -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- RISK B: חיוג ישיר לקו-הבדיקה -->
@@ -136,6 +140,11 @@
              AlarmManager שלנו מפעיל אותו, אין סיבה שאפליקציה אחרת תוכל. -->
         <receiver
             android:name=".ReportReminder$Receiver"
+            android:exported="false" />
+
+        <!-- מקבל את אזעקת פרץ-הדופק. -->
+        <receiver
+            android:name=".HeartRateSampler$Receiver"
             android:exported="false" />
 
     </application>

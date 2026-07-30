@@ -80,6 +80,13 @@ class TapDetectorService : Service(), SensorEventListener {
     private var hrDiagnosticStarted = false
     private var hrLastSummaryElapsedMs: Long? = null
     private var hrLastRawBits: Int? = null
+
+    // --- פרץ דופק (ראו HeartRateSampler) ---
+    private var burstInProgress = false
+    private var burstSampleCount = 0
+    private var burstStartElapsedMs = 0L
+    private var burstFirstSampleMs: Long? = null
+    private var burstWakeLock: android.os.PowerManager.WakeLock? = null
     private val hrSmoother = HeartRate.Smoother()
     private val hrDiagnosticHandler = Handler(Looper.getMainLooper())
     private val hrDiagnosticSummaryRunnable = object : Runnable {
@@ -297,12 +304,25 @@ class TapDetectorService : Service(), SensorEventListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, buildNotification())
+
+        // פרץ דופק. חייב לרוץ לפני בדיקת isListening — האזעקה מגיעה כשהשירות
+        // כבר רץ, ולכן היא תמיד תיפול אחרי ה-if ולא לתוכו.
+        if (intent?.action == HeartRateSampler.ACTION_BURST) {
+            startHeartRateBurst()
+            return START_STICKY
+        }
+
         if (!isListening) {
             // ה-accelerometer כבר לא נרשם כאן: הדיווח עבר למחוות ✕ על
             // מסך-השעון, ולהשאיר גלאי-תנועה פעיל היה גם מבזבז סוללה
             // וגם ממשיך לייצר את אותן התרעות-שווא שבגללן ויתרנו עליו.
             offBodySensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
-            heartRateSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
+
+            // ⚠️ מד הדופק **אינו** נרשם כאן יותר. רישום רצוף הוא בדיוק מה
+            // שנכשל: ב-2026-07-30 הזרם נפסק ב-05:51 ולא חזר עד 14:06,
+            // כולל שעה שבה נבו היה ער והלך. עכשיו הוא נרשם מחדש בכל פרץ —
+            // ראו HeartRateSampler.
+            HeartRateSampler.scheduleNext(this, null)
 
             // מונה-הצעדים, שוב עם העדפה לוריאנט ה-wakeup מאותה סיבה כמו
             // בדופק. ⚠️ הוא **אינו** דורש הרשאה כאן רק מפני ש-targetSdk
@@ -368,6 +388,14 @@ class TapDetectorService : Service(), SensorEventListener {
                 wornState = bpm != null
                 bpm?.let { hrSmoother.add(it) }
 
+                // מוני-הפרץ. `burstFirstSampleMs` נרשם פעם אחת בלבד — הוא
+                // מודד כמה זמן החיישן האופטי צריך כדי להיתפס אחרי הדלקה,
+                // וזה המספר שיקבע בהמשך אם 45 שניות הן יותר מהנדרש.
+                if (burstInProgress) {
+                    burstSampleCount++
+                    if (burstFirstSampleMs == null) burstFirstSampleMs = SystemClock.elapsedRealtime()
+                }
+
                 if (DebugConfig.DEBUG_TAG_ENABLED) {
                     val now = System.currentTimeMillis()
                     hrSampleCountInWindow++
@@ -403,6 +431,69 @@ class TapDetectorService : Service(), SensorEventListener {
                 }
             }
         }
+    }
+
+    /**
+     * פרץ אחד: מדליק את מד הדופק, אוסף, מכבה, ומתזמן את הבא.
+     *
+     * ⚠️ **ה-wakelock הוא חובה ולא זהירות-יתר.** האזעקה מעירה את המעבד רק
+     * לרגע מסירת ה-broadcast; בלי להחזיק אותו ער, המכשיר יחזור לישון תוך
+     * שבריר שנייה, החיישן לא יספיק למסור כלום, והפרץ יחזור ריק — כלומר
+     * ייראה בדיוק כמו התקלה שבאנו לתקן.
+     *
+     * ה-timeout על ה-wakelock קצר בכוונה ומעט מעל אורך הפרץ: אם משהו
+     * ישתבש ו-[stopHeartRateBurstRunnable] לא ירוץ, המערכת תשחרר אותו
+     * לבד. wakelock שנשכח דלוק שורף את הסוללה בשעות.
+     */
+    private fun startHeartRateBurst() {
+        val sensor = heartRateSensor
+        if (sensor == null) {
+            EventLog.log(this, "INFO", "hr_burst_no_sensor")
+            return
+        }
+        if (burstInProgress) {
+            // אזעקה כפולה — לא לרשום מאזין שני ולא לאפס את המונים באמצע.
+            EventLog.log(this, "INFO", "hr_burst_already_running")
+            return
+        }
+
+        burstInProgress = true
+        burstSampleCount = 0
+        burstFirstSampleMs = null
+        burstStartElapsedMs = SystemClock.elapsedRealtime()
+
+        val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+        burstWakeLock = pm?.newWakeLock(
+            android.os.PowerManager.PARTIAL_WAKE_LOCK, "iluy:hr_burst"
+        )?.also { runCatching { it.acquire(HeartRateSampler.BURST_MS + 10_000L) } }
+
+        sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+        hrDiagnosticHandler.postDelayed(stopHeartRateBurstRunnable, HeartRateSampler.BURST_MS)
+    }
+
+    private val stopHeartRateBurstRunnable = Runnable { stopHeartRateBurst() }
+
+    private fun stopHeartRateBurst() {
+        if (!burstInProgress) return
+        burstInProgress = false
+
+        heartRateSensor?.let { runCatching { sensorManager.unregisterListener(this, it) } }
+
+        // ⚠️ `first_sample_ms` הוא המספר שבשבילו הפרץ מודד את עצמו: כמה זמן
+        // החיישן האופטי צריך כדי להיתפס על העור אחרי הדלקה. לא ידענו אותו,
+        // ולכן אורך הפרץ (45 שניות) הוא כרגע ניחוש שמרני. כשיהיו כמה
+        // עשרות פרצים אפשר לקצר אותו ולחסוך סוללה על בסיס נתון.
+        val firstMs = burstFirstSampleMs?.let { it - burstStartElapsedMs } ?: -1L
+        EventLog.log(
+            this, "INFO",
+            "hr_burst_done;samples=$burstSampleCount;first_sample_ms=$firstMs;" +
+                "revived=${if (burstSampleCount > 0) "yes" else "no"}"
+        )
+
+        runCatching { burstWakeLock?.let { if (it.isHeld) it.release() } }
+        burstWakeLock = null
+
+        HeartRateSampler.scheduleNext(this, lastStepElapsedMs?.let { SystemClock.elapsedRealtime() - it })
     }
 
     private fun buildNotification(): android.app.Notification {
