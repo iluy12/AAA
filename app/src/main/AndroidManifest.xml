@@ -152,6 +152,12 @@
             android:exported="false"
             android:excludeFromRecents="true" />
 
+        <!-- בחירת סוג נפילה במסך מלא. ⚠️ חייב מסך שלם — ראו הערת-המחלקה. -->
+        <activity
+            android:name=".FallPickerActivity"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+
         <receiver
             android:name=".BootReceiver"
             android:exported="true">

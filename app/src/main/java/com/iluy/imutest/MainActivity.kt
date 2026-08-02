@@ -93,20 +93,6 @@ class MainActivity : Activity() {
 
     private var logDisplay: TextView? = null
 
-    /**
-     * הרגע שאחרי דיווח בגרירה: משפט אחד, ונסגר לבד.
-     *
-     * ⚠️ זהה לזה שב-FallConfirmActivity בכוונה — **שני המסלולים חייבים
-     * להרגיש אותו דבר.** מי שגרר לקטגוריה לא צריך לקבל חוויה אחרת ממי
-     * שלחץ, רק כי הדרך הטכנית הייתה שונה.
-     */
-    private fun showFallAcknowledge() {
-        val text = Encouragements.fallAcknowledge()
-        val toast = android.widget.Toast.makeText(this, text, android.widget.Toast.LENGTH_LONG)
-        toast.setGravity(Gravity.CENTER, 0, 0)
-        toast.show()
-    }
-
     private fun renderHome() {
         val scroll = ScrollView(this)
         val container = LinearLayout(this).apply {
@@ -138,22 +124,13 @@ class MainActivity : Activity() {
         // השתיקה, ההודעה המושהית וניתוח החלון — פשוט לא רץ. ההערה
         // `no_physio_buffer_v1` שהייתה כאן תיארה בדיוק את החוסר הזה,
         // והוא נסגר.
-        container.addView(
-            RadialFallButton(
-                this,
-                onReport = { category ->
-                    FallReport.record(this, category)
-                    showFallAcknowledge()
-                },
-                onNeedsConfirm = { FallConfirmActivity.launch(this) }
-            ).apply {
-                // ⚠️ גבוה מספיק כדי שארבע הבועות ייכנסו בקצוות בלי לחפוף.
-                // ב-170 הן נדחסו למרכז והטקסט הוסתר על ידי האצבע.
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, 300
-                ).apply { setMargins(0, 10, 0, 10) }
-            }
-        )
+        // ⚠️ **כפתור רגיל שפותח מסך מלא, ולא מחווה בתוך הרשימה.**
+        // המחווה הרדיאלית ישבה כאן ישירות ולא עבדה: ה-ScrollView שמסביב
+        // יירט כל גרירה אנכית, כלומר "ברית" ו"מחשבה" היו בלתי-נגישות.
+        // ראו FallPickerActivity.
+        container.addView(bigButton("נפלתי", primary = true) {
+            FallPickerActivity.launch(this)
+        })
 
         container.addView(bigButton("כל האפליקציות") {
             AppDrawerActivity.launch(this)
