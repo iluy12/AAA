@@ -62,7 +62,7 @@ object OvercomingReporter {
                     variant = RiskFlowActivity.VARIANT_SECOND_TAP_IN_HOUR
                 )
             }
-            return Report(Outcome.OFFER_MENTOR, Encouragements.atThreshold(true), todayCount)
+            return Report(Outcome.OFFER_MENTOR, Encouragements.atThreshold(), todayCount)
         }
 
         if (todayCount >= threshold) {
@@ -71,20 +71,31 @@ object OvercomingReporter {
             // שלא תישחק ותיבלע.
             val average = CalendarStore.averageActiveDayOvercomings(context)
             val roughDay = average > 0 && todayCount > average * 1.5
-            val hint = roughDay || (0..2).random() == 0
+            // ⚠️ פעם מארבע ולא משלוש. הרמיזה הפכה **לשאלה** שדורשת תשובה,
+            // ולכן היא מטרידה יותר מטקסט שנבלע. ביום חריג — תמיד.
+            val hint = roughDay || (0..3).random() == 0
 
             EventLog.log(
                 context, "TRIGGER",
                 "personal_threshold_reached;today=$todayCount;threshold=$threshold;" +
-                    "avg=${"%.1f".format(average)};rough_day=$roughDay"
+                    "avg=${"%.1f".format(average)};rough_day=$roughDay;ask_mentor=$hint"
             )
+
+            // ⚠️ **מחושב פעם אחת.** קודם `atThreshold(hint)` נקרא פעמיים —
+            // אחת למסך ואחת לדוח — ומכיוון שהוא בוחר טקסט אקראי, המשתמש
+            // ראה משפט אחד ובלוג נרשם אחר. באג שקט שהיה מקשה על כל ניתוח
+            // בדיעבד.
+            val message = Encouragements.atThreshold()
+            val question = if (hint) Encouragements.mentorQuestion() else null
+
             if (launchUi) {
                 TapAcknowledgedActivity.launch(
                     context, source = source,
-                    message = Encouragements.atThreshold(hint)
+                    message = message,
+                    askAfter = question
                 )
             }
-            return Report(Outcome.AT_PERSONAL_THRESHOLD, Encouragements.atThreshold(hint), todayCount)
+            return Report(Outcome.AT_PERSONAL_THRESHOLD, message, todayCount)
         }
 
         // ---- התגברות רגילה ----

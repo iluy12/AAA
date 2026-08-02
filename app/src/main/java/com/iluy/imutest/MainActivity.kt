@@ -93,6 +93,20 @@ class MainActivity : Activity() {
 
     private var logDisplay: TextView? = null
 
+    /**
+     * הרגע שאחרי דיווח בגרירה: משפט אחד, ונסגר לבד.
+     *
+     * ⚠️ זהה לזה שב-FallConfirmActivity בכוונה — **שני המסלולים חייבים
+     * להרגיש אותו דבר.** מי שגרר לקטגוריה לא צריך לקבל חוויה אחרת ממי
+     * שלחץ, רק כי הדרך הטכנית הייתה שונה.
+     */
+    private fun showFallAcknowledge() {
+        val text = Encouragements.fallAcknowledge()
+        val toast = android.widget.Toast.makeText(this, text, android.widget.Toast.LENGTH_LONG)
+        toast.setGravity(Gravity.CENTER, 0, 0)
+        toast.show()
+    }
+
     private fun renderHome() {
         val scroll = ScrollView(this)
         val container = LinearLayout(this).apply {
@@ -119,10 +133,25 @@ class MainActivity : Activity() {
             startActivity(Intent(this, MoodPickerActivity::class.java))
         })
 
-        container.addView(bigButton("נפלתי", primary = true) {
-            EventLog.log(this, "TRIGGER", "fell_button;note=no_physio_buffer_v1")
-            RiskFlowActivity.launch(this, source = "כפתור 'נפלתי'")
-        })
+        // ⚠️ **הכפתור מחובר עכשיו ל-FallReport ולא ל-RiskFlow.** קודם הוא
+        // פתח את מסלול הסיכון הישן, כלומר כל המנגנון שנבנה — הספירה,
+        // השתיקה, ההודעה המושהית וניתוח החלון — פשוט לא רץ. ההערה
+        // `no_physio_buffer_v1` שהייתה כאן תיארה בדיוק את החוסר הזה,
+        // והוא נסגר.
+        container.addView(
+            RadialFallButton(
+                this,
+                onReport = { category ->
+                    FallReport.record(this, category)
+                    showFallAcknowledge()
+                },
+                onNeedsConfirm = { FallConfirmActivity.launch(this) }
+            ).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 170
+                ).apply { setMargins(0, 10, 0, 10) }
+            }
+        )
 
         container.addView(bigButton("כל האפליקציות") {
             AppDrawerActivity.launch(this)

@@ -146,6 +146,12 @@
             android:exported="false"
             android:excludeFromRecents="true" />
 
+        <!-- אישור לדיווח נפילה שנעשה בלחיצה בלבד, בלי גרירה לקטגוריה. -->
+        <activity
+            android:name=".FallConfirmActivity"
+            android:exported="false"
+            android:excludeFromRecents="true" />
+
         <receiver
             android:name=".BootReceiver"
             android:exported="true">

@@ -30,14 +30,24 @@ class TapAcknowledgedActivity : Activity() {
     companion object {
         const val EXTRA_SOURCE = "extra_source"
         const val EXTRA_MESSAGE = "extra_message"
+
+        /**
+         * שאלה שתיפתח **אחרי** שהחיזוק נסגר, או null.
+         *
+         * ⚠️ הסדר הזה מכוון: החיזוק קודם, השאלה אחריו. הרגע הראשון שייך
+         * להכרה במאמץ — מי שהתגבר שוב ושוב היום צריך לשמוע את זה לפני
+         * שמציעים לו משהו. שאלה שמופיעה יחד עם החיזוק מבטלת אותו.
+         */
+        const val EXTRA_ASK_AFTER = "extra_ask_after"
         private const val AUTO_DISMISS_MS = 2_500L
         /** בסף האישי ההודעה ארוכה יותר וכוללת רמיזת-מלווה — צריך זמן לקרוא. */
         private const val AUTO_DISMISS_LONG_MS = 5_000L
 
-        fun launch(context: Context, source: String, message: String? = null) {
+        fun launch(context: Context, source: String, message: String? = null, askAfter: String? = null) {
             val intent = Intent(context, TapAcknowledgedActivity::class.java).apply {
                 putExtra(EXTRA_SOURCE, source)
                 if (message != null) putExtra(EXTRA_MESSAGE, message)
+                if (askAfter != null) putExtra(EXTRA_ASK_AFTER, askAfter)
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
             }
             context.startActivity(intent)
@@ -69,6 +79,12 @@ class TapAcknowledgedActivity : Activity() {
         setContentView(container)
 
         val dismissAfter = if (isLong) AUTO_DISMISS_LONG_MS else AUTO_DISMISS_MS
-        Handler(Looper.getMainLooper()).postDelayed({ finish() }, dismissAfter)
+        val askAfter = intent.getStringExtra(EXTRA_ASK_AFTER)
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (askAfter != null) {
+                startActivity(AskActivity.intentFor(this, askAfter, "סף אישי"))
+            }
+            finish()
+        }, dismissAfter)
     }
 }
