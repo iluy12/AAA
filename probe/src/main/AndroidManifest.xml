@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- להעלאת התוצאה ולקבלת קוד קצר. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- ⚠️ נדרשת כדי לראות **אילו** חיישני-גוף קיימים. בלעדיה חיישן הדופק
+         ומדדים ביומטריים אחרים פשוט לא מופיעים ברשימה, והבדיקה מחמיצה
+         בדיוק את מה שהיא קיימת בשבילו. -->
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <!-- סריקת WiFi ובדיקת ספקי מיקום דורשות הרשאת מיקום באנדרואיד. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <application
+        android:allowBackup="false"
+        android:label="Watch Probe"
+        android:usesCleartextTraffic="false">
+
+        <activity
+            android:name=".ProbeActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+</manifest>

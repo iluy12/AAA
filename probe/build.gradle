@@ -1,0 +1,56 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
+
+// ‏Watch Probe — אפליקציה עצמאית לבדיקת חומרה של שעון, לפני קנייה.
+//
+// ⚠️ **נפרדת מעילוי בכוונה, ולא רק טכנית.** היא נשלחת לספקים סינים כדי
+// שיריצו אותה על דגם מועמד וישלחו קוד בחזרה — כלומר היא יוצאת מהידיים
+// שלנו. עילוי עצמה מכילה את שיטת הזיהוי, ו-APK ניתן לפירוק; לכן אין כאן
+// שום שורה ממנה — לא האלגוריתם, לא המשקלים, ולא הטקסטים.
+//
+// היא גם מעשית יותר: עילוי מחליפה מסך-בית, דורשת שאלון בעברית ומתקינה
+// שירות רקע. ספק לא יעבור את זה. זו נפתחת, סורקת, ומציגה קוד.
+android {
+    namespace 'com.watchprobe'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.watchprobe"
+        minSdk 21
+        // 28 ולא גבוה יותר: מ-API 30 אנדרואיד מסתיר את רשימת החבילות,
+        // ובדיוק היכולת לראות מה היצרן התקין היא חצי מהערך כאן.
+        targetSdk 28
+        versionCode 1
+        versionName "1.0"
+    }
+
+    // אותו מפתח קבוע כמו השאר — ראו ההסבר ב-app/build.gradle.
+    signingConfigs {
+        debug {
+            storeFile file('../debug.p12')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+            storeType 'PKCS12'
+        }
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+}
+
+dependencies {
+}

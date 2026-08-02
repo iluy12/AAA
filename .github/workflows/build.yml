@@ -55,5 +55,6 @@ jobs:
           files: |
             app/build/outputs/apk/debug/app-debug.apk
             rescue/build/outputs/apk/debug/rescue-debug.apk
+            probe/build/outputs/apk/debug/probe-debug.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

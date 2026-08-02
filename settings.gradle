@@ -15,3 +15,5 @@ dependencyResolutionManagement {
 rootProject.name = "IluyImuTest"
 include ':app'
 include ':rescue'
+// כלי בדיקת-חומרה עצמאי, לשליחה לספקים לפני קנייה. ראו probe/build.gradle.
+include ':probe'
