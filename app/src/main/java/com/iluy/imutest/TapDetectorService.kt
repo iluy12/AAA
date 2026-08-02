@@ -668,7 +668,10 @@ class TapDetectorService : Service(), SensorEventListener {
             EventLog.log(
                 this, "RISK",
                 if (risk.gatesPassed) {
-                    "score=${risk.score};${risk.parts};${OfferBudget.describe(this)}"
+                    // ⚠️ `of` הוא סכום המשקלים שהיו זמינים לחישוב, ובלעדיו
+                    // אי-אפשר להשוות ציון משבוע ראשון לציון מחודש הבא.
+                    "score=${risk.score};of=${risk.available};" +
+                        "${risk.parts};${OfferBudget.describe(this)}"
                 } else {
                     "blocked=${risk.blockedBy}"
                 }

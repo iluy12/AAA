@@ -68,6 +68,8 @@ class MoodPickerActivity : Activity() {
 
     private fun onMoodSelected(mood: String) {
         EventLog.log(this, "TRIGGER", "mood_button;mood=$mood")
+        // דיווח מצב-רוח הוא סימון של המשתמש, ולכן גם הוא פותח קירור.
+        OfferBudget.recordUserReport(this)
         RiskFlowActivity.launch(this, source = "כפתור מצב-רוח ($mood)")
         finish()
     }

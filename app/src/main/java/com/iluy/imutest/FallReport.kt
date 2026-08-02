@@ -88,6 +88,10 @@ object FallReport {
         // אבל הספירה האמיתית יושבת כאן — ראו הערת-המחלקה על נפילה שנייה.
         CalendarStore.recordFall(context, category ?: "לא צוין")
 
+        // ⚠️ בלי זה שער הקירור מת: `inCooldownAfterReport` היה מחזיר false
+        // תמיד, והמערכת יכלה לקפוץ עליו שנייה אחרי שדיווח על נפילה.
+        OfferBudget.recordUserReport(context)
+
         markLearningWindow(context, now, count)
         scheduleEncouragement(context, count)
 

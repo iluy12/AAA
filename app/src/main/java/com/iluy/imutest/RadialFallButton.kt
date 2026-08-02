@@ -157,20 +157,26 @@ class RadialFallButton(
 
         canvas.drawRoundRect(0f, 0f, width.toFloat(), height.toFloat(), 18f, 18f, basePaint)
 
-        val r = kotlin.math.min(width, height) * 0.34f
+        // ⚠️ **הבועות נצמדות לקצוות ולא מסודרות סביב האצבע.** בגרסה הראשונה
+        // הן ישבו במרחק קבוע מנקודת הלחיצה, ועל מסך של שני אינץ' זה דחס
+        // אותן למרכז — האצבע כיסתה אותן והטקסט לא נקרא. עכשיו כל אחת
+        // נצמדת לקצה שלה, כך שגודל המסך קובע את המרחק ולא מקום הלחיצה.
+        val bubbleR = 52f
+        val padX = bubbleR + 6f
+        val padY = bubbleR + 6f
         val positions = listOf(
-            downX to downY - r,
-            downX + r to downY,
-            downX to downY + r,
-            downX - r to downY
+            cx to padY,                        // למעלה
+            width - padX to cy,                // ימין
+            cx to height - padY,               // למטה
+            padX to cy                         // שמאל
         )
         for (i in CATEGORIES.indices) {
             val (x, y) = positions[i]
             bubblePaint.color = if (i == highlighted) Color.parseColor("#F2C14E")
-            else Color.parseColor("#5A5A5A")
-            canvas.drawCircle(x, y, 46f, bubblePaint)
+            else Color.parseColor("#4A4A4A")
+            canvas.drawCircle(x, y, bubbleR, bubblePaint)
             labelPaint.color = if (i == highlighted) Color.BLACK else Color.WHITE
-            canvas.drawText(CATEGORIES[i], x, y + 10f, labelPaint)
+            canvas.drawText(CATEGORIES[i], x, y + 11f, labelPaint)
         }
     }
 }

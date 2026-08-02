@@ -27,6 +27,10 @@ object RiskContext {
      * ⚠️ הטווחים גסים בכוונה — השאלה מציעה "בוקר / צהריים / לילה", ואין
      * טעם להעמיד פנים שיש כאן דיוק של שעה.
      */
+    /** האם בכלל ענה על שאלת השעות. בלי זה האות אינו ניתן לחישוב. */
+    fun hasDeclaredHours(context: Context): Boolean =
+        LocalStore.getMultiChoice(context, LocalStore.KEY_Q1_TIMES).isNotEmpty()
+
     fun hourMatchesDeclared(context: Context, hourOfDay: Int): Boolean {
         val declared = LocalStore.getMultiChoice(context, LocalStore.KEY_Q1_TIMES)
         if (declared.isEmpty()) return false
@@ -71,11 +75,19 @@ object RiskContext {
         return (days / typical).coerceIn(0.0, 1.0)
     }
 
+    /**
+     * ⚠️ **`recentDays` מחזיר מהחדש לישן** — אינדקס 0 הוא היום. לכן
+     * `indexOfFirst` הוא הנפילה **האחרונה**, והאינדקס עצמו כבר שווה
+     * למספר הימים שעברו.
+     *
+     * הגרסה הראשונה השתמשה ב-`indexOfLast` וגם הפכה את החישוב, ולכן
+     * נפילה מאתמול דווחה כ-88 ימים. האות הזה היה שקר מלא, והוא ניזון
+     * ישירות לציון.
+     */
     fun daysSinceLastFall(context: Context): Int? {
         val days = CalendarStore.recentDays(context, 90)
-        val idx = days.indexOfLast { it.hasFall }
-        if (idx < 0) return null
-        return days.size - 1 - idx
+        val idx = days.indexOfFirst { it.hasFall }
+        return if (idx < 0) null else idx
     }
 
     /** המרווח הממוצע בין נפילות שנצפו בפועל, ומספר המרווחים. */
@@ -83,6 +95,8 @@ object RiskContext {
         val days = CalendarStore.recentDays(context, 90)
         val fallIdx = days.mapIndexedNotNull { i, d -> if (d.hasFall) i else null }
         if (fallIdx.size < 2) return null
+        // הרשימה מהחדש לישן, ולכן ההפרש בין אינדקסים עוקבים הוא כבר מספר
+        // הימים בין שתי נפילות — הכיוון לא משנה כאן.
         val gaps = fallIdx.zipWithNext { a, b -> (b - a).toDouble() }
         return gaps.average() to gaps.size
     }

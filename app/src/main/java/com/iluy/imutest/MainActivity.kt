@@ -147,8 +147,10 @@ class MainActivity : Activity() {
                 },
                 onNeedsConfirm = { FallConfirmActivity.launch(this) }
             ).apply {
+                // ⚠️ גבוה מספיק כדי שארבע הבועות ייכנסו בקצוות בלי לחפוף.
+                // ב-170 הן נדחסו למרכז והטקסט הוסתר על ידי האצבע.
                 layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, 170
+                    LinearLayout.LayoutParams.MATCH_PARENT, 300
                 ).apply { setMargins(0, 10, 0, 10) }
             }
         )
