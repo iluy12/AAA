@@ -33,6 +33,16 @@ class MainActivity : Activity() {
         private const val REQUEST_BODY_SENSORS = 701
         private const val REQUEST_LOCATION = 702
 
+        /**
+         * פותח את אותו Activity במצב רשימת-פיתוח במקום בקרוסלה.
+         *
+         * ⚠️ מסך אחד ולא שניים, כי כל מכונת-הלוגים — הצגה, העתקה, ניקוי,
+         * העלאה — יושבת כאן ותלויה בשדות פרטיים. פיצול לקובץ נפרד היה
+         * דורש להזיז את כולם, וזה בדיוק סוג השכתוב שכבר העלים כאן פונקציה
+         * שלמה בשקט בעבר.
+         */
+        const val EXTRA_DEV = "extra_dev"
+
         fun start(context: Context) {
             val intent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -93,7 +103,50 @@ class MainActivity : Activity() {
 
     private var logDisplay: TextView? = null
 
+    /**
+     * מסך אחד לכל פעולה, החלקה ביניהם.
+     *
+     * ⚠️ **זה נקבע במפורש ולא נבנה עד עכשיו.** התפריט הזה נלחץ ברגעים
+     * קשים — רשימה של שישה כפתורים קטנים דורשת קריאה, כיוון ודיוק, ואין
+     * את שלושתם ברגע כזה. מטרה אחת שתופסת מסך שלם דורשת רק לגעת.
+     *
+     * ⚠️ **ההגדרות נשארות רשימה צפופה בכוונה** — הן נלחצות בשקט ובמכוון.
+     * ממשק גדול ואיטי היכן שהרגע קשה, צפוף ומהיר היכן שהמשתמש רגוע.
+     */
     private fun renderHome() {
+        if (intent.getBooleanExtra(EXTRA_DEV, false)) {
+            renderDev()
+            return
+        }
+        setContentView(
+            MenuCarousel(
+                this,
+                listOf(
+                    MenuCarousel.Page(
+                        "נפלתי", "גע כדי לדווח", "#8C3B34"
+                    ) { FallPickerActivity.launch(it) },
+                    MenuCarousel.Page(
+                        "מצב רוח", "איך אתה מרגיש עכשיו", "#2E5E7D"
+                    ) { it.startActivity(Intent(it, MoodPickerActivity::class.java)) },
+                    MenuCarousel.Page(
+                        "הלוח שלי", "התגברויות ונפילות", "#2E7D5B"
+                    ) { InfoActivity.launch(it) },
+                    MenuCarousel.Page(
+                        "אפליקציות", "כל מה שיש בשעון", "#4A4A4A"
+                    ) { AppDrawerActivity.launch(it) },
+                    MenuCarousel.Page(
+                        "פיתוח", "לוגים, סריקה, עדכון", "#333333"
+                    ) {
+                        it.startActivity(
+                            Intent(it, MainActivity::class.java).putExtra(EXTRA_DEV, true)
+                        )
+                    }
+                )
+            ).view()
+        )
+    }
+
+    private fun renderDev() {
         val scroll = ScrollView(this)
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -115,27 +168,9 @@ class MainActivity : Activity() {
             setPadding(0, 0, 0, 24)
         })
 
-        container.addView(bigButton("מצב-רוח") {
-            startActivity(Intent(this, MoodPickerActivity::class.java))
-        })
-
-        // ⚠️ **הכפתור מחובר עכשיו ל-FallReport ולא ל-RiskFlow.** קודם הוא
-        // פתח את מסלול הסיכון הישן, כלומר כל המנגנון שנבנה — הספירה,
-        // השתיקה, ההודעה המושהית וניתוח החלון — פשוט לא רץ. ההערה
-        // `no_physio_buffer_v1` שהייתה כאן תיארה בדיוק את החוסר הזה,
-        // והוא נסגר.
-        // ⚠️ **כפתור רגיל שפותח מסך מלא, ולא מחווה בתוך הרשימה.**
-        // המחווה הרדיאלית ישבה כאן ישירות ולא עבדה: ה-ScrollView שמסביב
-        // יירט כל גרירה אנכית, כלומר "ברית" ו"מחשבה" היו בלתי-נגישות.
-        // ראו FallPickerActivity.
-        container.addView(bigButton("נפלתי", primary = true) {
-            FallPickerActivity.launch(this)
-        })
-
-        container.addView(bigButton("כל האפליקציות") {
-            AppDrawerActivity.launch(this)
-        })
-
+        // ⚠️ "נפלתי", "מצב רוח" ו"כל האפליקציות" **הוסרו מכאן** — הם
+        // מסכים בקרוסלה עכשיו. השארתם כאן הייתה יוצרת שתי דרכים לאותה
+        // פעולה, ובעיקר שתי דרכים שיכולות להיפרד כשאחת מהן משתנה.
         val updateStatus = TextView(this).apply {
             textSize = 11f
             gravity = Gravity.CENTER
@@ -378,6 +413,11 @@ class MainActivity : Activity() {
         Toast.makeText(this, "הלוג נוקה", Toast.LENGTH_SHORT).show()
     }
 
+    /**
+     * ⚠️ לא בשימוש כרגע. הכפתורים הגדולים עברו לקרוסלה, שמציירת בעצמה.
+     * נשאר כי מסך הפיתוח עשוי לרצות אותו, ומחיקה כאן היא שינוי שלא נדרש.
+     */
+    @Suppress("unused")
     private fun bigButton(label: String, primary: Boolean = false, onClick: () -> Unit): Button =
         Button(this).apply {
             text = label
