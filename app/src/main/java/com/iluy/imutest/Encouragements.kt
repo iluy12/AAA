@@ -220,7 +220,24 @@ object Encouragements {
      * ⚠️ נפילה שנייה גוברת על הסיווג — יותר מאחת ביום היא תמיד סימן
      * להתדרדרות, ואז הטון הישיר חשוב יותר מהתאמה לקטגוריה.
      */
+    /**
+     * ⚠️ **קרי לילה — הבנק היחיד שאסור בו כל רמז לאשמה.**
+     *
+     * זה לא היה ברצונו. משפט מנחם שנשמע כמו סליחה על מעשה הופך אירוע
+     * לא-רצוני לאשמה, וזה בדיוק ההפך ממה שנדרש. הטון כאן מסביר, מרגיע,
+     * ומפנה קדימה.
+     */
+    private val afterNocturnal = listOf(
+        Line("זה קרה בשינה, וזה לא בידיים שלך. הגוף עושה את שלו"),
+        Line("אין כאן על מה להצטער. זה לא היה ברצונך"),
+        Line("קרה, ואתה ממשיך. שום דבר לא נשבר"),
+        Line("תשמור על העיניים והמחשבה בימים הקרובים, וזה יירגע")
+    )
+
     fun afterFall(severity: FallSeverity, secondToday: Boolean): Line = when {
+        // ⚠️ קרי לילה גובר גם על "שנייה היום" — הטון הישיר של נפילה
+        // שנייה מניח בחירה, וכאן לא הייתה.
+        severity == FallSeverity.NOCTURNAL -> afterNocturnal.random()
         secondToday -> afterSecondFall.random()
         severity == FallSeverity.THOUGHT -> afterThought.random()
         severity == FallSeverity.EYES -> afterEyes.random()

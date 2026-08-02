@@ -103,7 +103,14 @@ object FallReport {
         // תמיד, והמערכת יכלה לקפוץ עליו שנייה אחרי שדיווח על נפילה.
         OfferBudget.recordUserReport(context)
 
-        markLearningWindow(context, now, count)
+        // ⚠️ קרי לילה מדווח בבוקר על מה שקרה בשינה — חצי השעה שקדמה
+        // לדיווח היא ארוחת בוקר, לא האירוע. ניתוח החלון כאן היה מייצר
+        // תווית שגויה, וזה גרוע מהיעדר תווית.
+        if (severity.reportIsNearEvent) {
+            markLearningWindow(context, now, count)
+        } else {
+            EventLog.log(context, "FALL", "window_skipped;reason=report_far_from_event")
+        }
         scheduleEncouragement(context, count)
 
         EventLog.log(
