@@ -116,12 +116,19 @@ object OfferBudget {
             .apply()
     }
 
-    /** נקרא בכל דיווח של המשתמש — ✕, נפילה, מצב-רוח. */
+    /**
+     * נקרא בכל דיווח של המשתמש — ✕, נפילה, מצב-רוח.
+     *
+     * ⚠️ **וזו גם הנקודה היחידה שמזינה את [Escalation].** שלושת מסלולי
+     * הדיווח כבר קוראים לכאן, ולכן חיבור כאן מבטיח שאף מסלול לא יישכח.
+     * חיבור בכל קורא בנפרד היה עובד היום ונשבר בטריגר הבא שיתווסף.
+     */
     fun recordUserReport(context: Context, kind: String = "report") {
         prefs(context).edit()
             .putLong("last_report_ms", System.currentTimeMillis())
             .putString("last_report_kind", kind)
             .apply()
+        Escalation.record(context, kind)
     }
 
     /**

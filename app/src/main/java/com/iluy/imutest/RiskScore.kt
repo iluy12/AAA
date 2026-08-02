@@ -42,7 +42,8 @@ object RiskScore {
 
     /** משקלי נבו. שם התנאי → כמה הוא שווה. */
     private const val W_STILL = 5
-    private const val W_LOW_MOTION = 6
+    /** תנועה עדינה בלי צעדים. ⚠️ היה `W_LOW_MOTION` והיה הפוך — ראו שימוש. */
+    private const val W_MOTION_NO_STEPS = 6
     private const val W_POSTURE = 8
     private const val W_PULSE_ABOVE = 8
     private const val W_PULSE_RISING = 8
@@ -133,10 +134,19 @@ object RiskScore {
             else null
         )
 
-        // --- תנועה עדינה נמוכה. הפוך: ככל שפחות תנועה, האות חזק יותר ---
+        // --- ⚠️ תנועה עדינה **בלי צעדים** ---
+        //
+        // ⚠️ **זה היה הפוך, והנתונים הוכיחו את זה.** האות נקרא `low_motion`
+        // ותגמל על **מיעוט** תנועה, בהנחה ששכיבה דוממת היא התרחיש. אבל
+        // בנפילה של 2026-08-02 בשעה 18:30 התנועה העדינה עלתה מ-4 ל-78
+        // בשעה שהצעדים נשארו אפס — כלומר האות הכי רלוונטי שקלל **נגד**
+        // הסיכון, והציון ירד מ-28 ל-16 ככל שהנפילה התקרבה.
+        //
+        // ההיגיון הנכון הוא אותו היגיון של כל המוצר: **אות בלי הסבר.**
+        // צעדים מסבירים תנועה; תנועה עדינה בלי צעדים אינה מוסברת.
         add(
-            "low_motion", W_LOW_MOTION,
-            if (r.motion >= 0) 1.0 - ramp(r.motion.toDouble(), 5.0, 60.0) else null
+            "motion_no_steps", W_MOTION_NO_STEPS,
+            if (r.motion >= 0 && r.steps == 0) ramp(r.motion.toDouble(), 10.0, 70.0) else null
         )
 
         // --- תנוחה: נמדדת כשונות מהמצב הרגיל שלו, לא כסיווג מוחלט ---
@@ -154,10 +164,15 @@ object RiskScore {
         add("pulse_rising", W_PULSE_RISING, if (r.bpm > 0) r.bpmTrend / 6.0 else null)
 
         // --- שעה שהצהיר עליה ---
+        //
+        // ⚠️ **עם דעיכה בקצוות ולא כן/לא.** ב-18:30 השעה עברה מ-17 ל-18,
+        // ו-6 נקודות נעלמו בבת אחת בגלל גבול שרירותי — בדיוק בשעה שבה
+        // הנפילה קרתה. "צהריים" נגמר ב-17:59 זה חיתוך של לוח שנה, לא של
+        // התנהגות אדם.
         add(
             "hour_q", W_HOUR_MATCHES,
             if (RiskContext.hasDeclaredHours(context))
-                (if (RiskContext.hourMatchesDeclared(context, r.hourOfDay)) 1.0 else 0.0)
+                RiskContext.hourProximityToDeclared(context, r.hourOfDay)
             else null
         )
 
@@ -207,6 +222,10 @@ object RiskScore {
         if (!OfferBudget.hasRoomToday(context)) return "daily_budget"
         if (!OfferBudget.enoughTimeSinceLast(context)) return "too_soon"
         if (OfferBudget.inCooldownAfterReport(context)) return "cooldown"
+        // ⚠️ **הכלל של נבו: סט אחד בלבד.** אם כבר רץ מנגנון חזק יותר —
+        // אחרי נפילה, או אחרי סימון מצב-רוח — הצעה תמימה מהגלאי היא בדיוק
+        // הסט השני שאסור שיישלח. המנגנון החזק בעלים על הרגע.
+        if (Escalation.levelNow(context) >= Escalation.Level.RISK_A) return "escalated"
         return null
     }
 }

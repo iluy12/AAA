@@ -34,6 +34,11 @@ class RiskFlowActivity : Activity() {
         const val VARIANT_SECOND_TAP_IN_HOUR = "second_tap_in_hour"
 
         fun launch(context: Context, source: String, variant: String = VARIANT_NORMAL) {
+            // ⚠️ **מסך שנפתח עכשיו בולע הודעה שתגיע בעוד עשר דקות.** אחרת
+            // המשתמש מסמן מצב-רוח, מקבל את המסך הזה, וכעבור רבע שעה מקבל
+            // גם את העידוד של הנפילה שדיווח קודם — שני סטים משני דיווחים,
+            // בדיוק מה שנבו אמר לא לעשות.
+            FallReport.cancelPending(context, "risk_a_opened")
             val intent = Intent(context, RiskFlowActivity::class.java).apply {
                 putExtra(EXTRA_SOURCE, source)
                 putExtra(EXTRA_VARIANT, variant)

@@ -131,7 +131,10 @@ class StatusActivity : Activity() {
         sb.append("רשומות:  ${SampleStore.count(this)}\n\n")
 
         sb.append("── תקציב ──\n")
-        sb.append("${OfferBudget.describe(this)}\n\n")
+        sb.append("${OfferBudget.describe(this)}\n")
+        // ⚠️ מוצג כאן ולא בתחתית: זה **מה שיקרה** בדיווח הבא, וזה בדיוק
+        // מה שנבו צריך לראות כדי לבדוק שהעץ מצטבר נכון.
+        sb.append("הסלמה:  ${Escalation.levelNow(this)} (${Escalation.total(this)})\n\n")
 
         // ⚠️ בתחתית ובקטן בכוונה — ראו הערת-המחלקה.
         sb.append("── ציון ──\n")

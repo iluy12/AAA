@@ -20,6 +20,13 @@ object CallHelper {
     fun startCall(activity: Activity, source: String) {
         EventLog.log(activity, "RISK_B_CALL", "source=$source;number=${DebugConfig.TEST_LINE_PHONE_NUMBER}")
 
+        // ⚠️ **השיחה סוגרת את עץ ההסלמה.** זו התגובה החזקה ביותר שיש
+        // למערכת, וברגע שהיא קרתה — האירוע הועבר לאדם. בלי האיפוס הזה
+        // הרמה הייתה נשארת גבוהה עוד שעות והמערכת הייתה ממשיכה להיות
+        // אגרסיבית **אחרי** שכבר טיפלו בו, כלומר בדיוק כשהיא הכי מיותרת.
+        Escalation.clear(activity)
+        FallReport.cancelPending(activity, "call_placed")
+
         val hasPermission = ContextCompat.checkSelfPermission(
             activity, Manifest.permission.CALL_PHONE
         ) == PackageManager.PERMISSION_GRANTED

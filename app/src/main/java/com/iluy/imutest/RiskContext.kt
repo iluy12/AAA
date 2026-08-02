@@ -31,6 +31,21 @@ object RiskContext {
     fun hasDeclaredHours(context: Context): Boolean =
         LocalStore.getMultiChoice(context, LocalStore.KEY_Q1_TIMES).isNotEmpty()
 
+    /**
+     * קרבה לטווח שהצהיר עליו: 1.0 בתוכו, 0.5 בשעה שגובלת בו, 0 רחוק.
+     *
+     * ⚠️ **לא כן/לא.** בנפילה של 18:30 השעה עברה מ-17 ל-18 ו-6 נקודות
+     * נעלמו בבת אחת — בדיוק ברגע האירוע. אדם לא מפסיק להיות בסיכון
+     * בשנייה שהשעון עובר לשעה עגולה.
+     */
+    fun hourProximityToDeclared(context: Context, hourOfDay: Int): Double {
+        if (hourMatchesDeclared(context, hourOfDay)) return 1.0
+        val before = (hourOfDay + 23) % 24
+        val after = (hourOfDay + 1) % 24
+        if (hourMatchesDeclared(context, before) || hourMatchesDeclared(context, after)) return 0.5
+        return 0.0
+    }
+
     fun hourMatchesDeclared(context: Context, hourOfDay: Int): Boolean {
         val declared = LocalStore.getMultiChoice(context, LocalStore.KEY_Q1_TIMES)
         if (declared.isEmpty()) return false

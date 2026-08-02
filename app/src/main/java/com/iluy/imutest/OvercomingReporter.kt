@@ -40,10 +40,24 @@ object OvercomingReporter {
         // נרשם ללוח לפני כל שאר הלוגיקה: התגברות נספרת גם כשהיא מסלימה,
         // כי גם היא התגברות. (סוכם עם נבו — לא רק הראשונה בשעה נספרת.)
         val todayCount = CalendarStore.recordOvercoming(context)
+        val threshold = LocalStore.getPersonalThreshold(context)
+
         // ⚠️ פותח את שער הקירור. בלי זה המערכת יכולה להציע שנייה אחרי
         // שהוא בעצמו סימן ✕ — כלומר בדיוק כשהוא כבר טיפל בזה.
-        OfferBudget.recordUserReport(context, "overcoming")
-        val threshold = LocalStore.getPersonalThreshold(context)
+        //
+        // ⚠️ **והסוג נקבע כאן ולא "overcoming" סתם**, כי זו גם הנקודה
+        // שמזינה את [Escalation]. התגברות רגילה היא **ניצחון** ולא סיכון,
+        // ולכן היא שווה אפס; מה שמסלים הוא **כמה** מהן היו היום ביחס
+        // למה שהוא בעצמו דיווח שהוא מחזיק. לכן הקריאה הוזזה לכאן, אחרי
+        // שהסף כבר ידוע.
+        OfferBudget.recordUserReport(
+            context,
+            when {
+                todayCount >= threshold * 2 -> "overcoming_doubled"
+                todayCount >= threshold -> "overcoming_threshold"
+                else -> "overcoming"
+            }
+        )
         EventLog.log(
             context, "INFO",
             "overcoming_recorded;today_total=$todayCount;personal_threshold=$threshold"

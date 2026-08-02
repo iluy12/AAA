@@ -166,6 +166,14 @@ object FallReport {
      * שנקבעה ל-60 שניות. הודעה שאמורה להגיע בעוד 10 דקות **חייבת** להגיע.
      */
     private fun scheduleEncouragement(context: Context, count: Int) {
+        // ⚠️ **קודם מבטלים, ורק אז מתזמנים.** הכלל של נבו: *"לא לשים 2 סט
+        // התראות לאותו משתמש מ-2 דיווחים, תמיד לקחת את ההתראות של המנגנון
+        // היותר אגרסיבי ולבטל את הפחות."*
+        //
+        // בנפילות של 20:50 ו-20:58 ההפרש היה שמונה דקות — כלומר העידוד של
+        // הראשונה עוד לא ירה כשהשנייה דווחה. בלי הביטול הוא היה מגיע
+        // אחריה, בנוסח של נפילה ראשונה, ומייצר שתי שיחות במקביל.
+        cancelPending(context, "superseded_by_fall_$count")
         val delay = if (count > 1) {
             Random.nextLong(REPEAT_MIN_MS, REPEAT_MAX_MS)
         } else {
@@ -185,13 +193,34 @@ object FallReport {
         EventLog.log(context, "FALL", "encouragement_scheduled;in_min=${delay / 60000};count=$count")
     }
 
+    /**
+     * מבטל עידוד שממתין וגם כזה שכבר הוצג.
+     *
+     * ⚠️ **שני הביטולים נחוצים, וקל לעשות רק את אחד מהם.** ה-alarm הוא מה
+     * שעוד לא ירה; ההודעה 4301 היא מה שכבר יושב בשורת ההתראות ונשאר שם עד
+     * שנוגעים בו. ביטול רק של הראשון היה משאיר על המסך הודעה של נפילה
+     * ראשונה בזמן שהמערכת כבר בטיפול בנפילה שנייה.
+     *
+     * נקרא גם מ-[RiskFlowActivity] — מסך שנפתח עכשיו חזק מהודעה שתגיע
+     * בעוד עשר דקות, ולכן הוא בולע אותה.
+     */
+    fun cancelPending(context: Context, reason: String) {
+        val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+        val pi = PendingIntent.getBroadcast(
+            context, REQUEST_CODE,
+            Intent(context, Receiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        am?.cancel(pi)
+        context.getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
+        EventLog.log(context, "FALL", "pending_encouragement_cancelled;reason=$reason")
+    }
+
     const val EXTRA_COUNT = "fall_count"
 
     class Receiver : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent?) {
             val count = intent?.getIntExtra(EXTRA_COUNT, 1) ?: 1
-            EventLog.log(context, "FALL", "encouragement_shown;count=$count")
-
             val nm = context.getSystemService(NotificationManager::class.java) ?: return
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 nm.createNotificationChannel(
@@ -206,7 +235,24 @@ object FallReport {
                     .getString("last_severity", FallSeverity.DEFAULT.name)
                     ?: FallSeverity.DEFAULT.name
             )
-            val line = Encouragements.afterFall(severity, secondToday = count > 1)
+            // ⚠️ **הרמה נקראת עכשיו, לא בזמן התזמון.** בין הרגע שהעידוד
+            // נקבע לרגע שהוא יורה עוברות עד 15 דקות, ובהן יכול היה להתווסף
+            // עוד דיווח. קריאה כאן היא מה שמבטיח שמה שנאמר בפועל תואם
+            // למצב האמיתי ולא למצב שהיה.
+            val level = Escalation.levelNow(context)
+            EventLog.log(
+                context, "FALL",
+                "encouragement_shown;count=$count;level=$level;total=${Escalation.total(context)}"
+            )
+
+            // ⚠️ הדוגמה של נבו: *"אם סימן מצב רוח ואח״כ דיווח נפלתי
+            // בעיניים — זה אוי ואבוי, ישר RISK B."* זו נפילה **ראשונה**
+            // ביום, ולכן `count > 1` לבדו היה נותן לה את הנוסח הרך. הרמה
+            // המצטברת היא מה שקובע את חומרת הניסוח.
+            val line = Encouragements.afterFall(
+                severity,
+                secondToday = count > 1 || level >= Escalation.Level.RISK_B
+            )
             val text = line.text
 
             // ⚠️ **הודעה שהיא שאלה חייבת דרך לענות.** הכלל שקבע נבו: כן/לא,
@@ -214,11 +260,11 @@ object FallReport {
             // כפתורים היא רק עוד טקסט שנעלם, וזו בדיוק ההצעה שלא נענית.
             val target = if (line.isQuestion) {
                 AskActivity.intentFor(context, line.text, "אחרי נפילה")
-            } else if (count > 1) {
+            } else if (level >= Escalation.Level.RISK_A) {
                 // המפתח חייב להיות EXTRA_SOURCE ולא "source" — המסך קורא
                 // ממנו, ומחרוזת אחרת הייתה נותנת "לא ידוע" בלוג.
                 Intent(context, HelpMenuActivity::class.java)
-                    .putExtra(HelpMenuActivity.EXTRA_SOURCE, "אחרי נפילה שנייה")
+                    .putExtra(HelpMenuActivity.EXTRA_SOURCE, "אחרי דיווח (רמה $level)")
             } else {
                 Intent(context, WatchFaceActivity::class.java)
             }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
