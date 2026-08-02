@@ -82,6 +82,7 @@ object SystemScan {
         runCatching { scanProviders(context, log) }.onFailure { log("scan_providers_failed;${it.javaClass.simpleName}") }
         runCatching { readVendorProviders(context, log) }.onFailure { log("scan_read_failed;${it.javaClass.simpleName}") }
         runCatching { scanLocation(context, log) }.onFailure { log("scan_location_failed;${it.javaClass.simpleName}") }
+        runCatching { scanWifi(context, log) }.onFailure { log("scan_wifi_failed;${it.javaClass.simpleName}") }
         log("scan_done")
     }
 
@@ -235,6 +236,40 @@ object SystemScan {
             }
             if (!found) log("read;auth=$auth;no_path_worked")
         }
+    }
+
+    /**
+     * האם יש WiFi, וכמה רשתות נראות מכאן.
+     *
+     * ⚠️ **זה מה שיכריע אם אפשר ללמד את השעון חדר מסוים.** GPS מדויק
+     * למאות מטרים ולכן חדר אינו ניתן לחישה דרכו — אבל **טביעת-אצבע של
+     * רשתות WiFi כן מבחינה בין חדרים**, כי אוסף הרשתות ועוצמות הקליטה
+     * שלהן משתנה תוך מטרים.
+     *
+     * ⚠️ מספר הרשתות הנראות הוא הנתון הקריטי: בבית עם נתב אחד בלבד אין
+     * ממה לבנות טביעת-אצבע, ובבניין עירוני עם עשרים רשתות יש בשפע.
+     * **בלי המספר הזה אי-אפשר לדעת אם השיטה ישימה כאן.**
+     */
+    private fun scanWifi(context: Context, log: (String) -> Unit) {
+        val pm = context.packageManager
+        log("wifi_feature;has=${pm.hasSystemFeature(android.content.pm.PackageManager.FEATURE_WIFI)}")
+        val wm = context.applicationContext
+            .getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+        if (wm == null) {
+            log("wifi;manager=null")
+            return
+        }
+        log("wifi;enabled=${runCatching { wm.isWifiEnabled }.getOrNull()}")
+        val results = runCatching { wm.scanResults }.getOrNull()
+        if (results == null) {
+            log("wifi;scan=denied_or_null")
+            return
+        }
+        log("wifi;networks_visible=${results.size}")
+        // רק עוצמות, בלי שמות רשתות — שם רשת מזהה מקום ומשפחה, והלוג
+        // עולה לשירות ציבורי.
+        val levels = results.map { it.level }.sortedDescending().take(8)
+        log("wifi;levels=${levels.joinToString("|")}")
     }
 
     /**
