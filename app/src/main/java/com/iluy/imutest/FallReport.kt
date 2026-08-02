@@ -79,14 +79,25 @@ object FallReport {
     fun record(context: Context, category: String?) {
         val count = todayCount(context) + 1
         val now = System.currentTimeMillis()
+
+        // ⚠️ דיווח בלי סיווג נכנס כ**חמור ביותר**, אבל מסומן `assumed`.
+        // בלי הסימון הזה כל דיווח עצל היה נראה בניתוח כנפילה בברית, כי
+        // המסלול חסר-החיכוך הוא בדיוק זה שברירת המחדל שלו החמורה.
+        val assumed = category == null
+        val severity = FallSeverity.fromLabel(category)
+
         prefs(context).edit()
             .putInt("count_${todayKey()}", count)
             .putLong("last_ms", now)
+            .putString("last_severity", severity.name)
             .apply()
 
         // הלוח הקיים שומר קטגוריה אחת ליום. נשמר לתאימות עם מסך המידע,
         // אבל הספירה האמיתית יושבת כאן — ראו הערת-המחלקה על נפילה שנייה.
-        CalendarStore.recordFall(context, category ?: "לא צוין")
+        CalendarStore.recordFall(context, severity.label)
+
+        // ⚠️ "עיניים" פותחת חלון ערנות של יומיים — היא מתארת עתיד ולא עבר.
+        FallAftermath.record(context, severity)
 
         // ⚠️ בלי זה שער הקירור מת: `inCooldownAfterReport` היה מחזיר false
         // תמיד, והמערכת יכלה לקפוץ עליו שנייה אחרי שדיווח על נפילה.
@@ -97,7 +108,7 @@ object FallReport {
 
         EventLog.log(
             context, "FALL",
-            "reported;category=${category ?: "none"};today_count=$count"
+            "reported;severity=${severity.label};assumed=$assumed;today_count=$count"
         )
     }
 
@@ -174,11 +185,12 @@ object FallReport {
                 )
             }
 
-            val line = if (count > 1) {
-                Encouragements.afterSecondFall()
-            } else {
-                Encouragements.afterFirstFall()
-            }
+            val severity = FallSeverity.valueOf(
+                context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    .getString("last_severity", FallSeverity.DEFAULT.name)
+                    ?: FallSeverity.DEFAULT.name
+            )
+            val line = Encouragements.afterFall(severity, secondToday = count > 1)
             val text = line.text
 
             // ⚠️ **הודעה שהיא שאלה חייבת דרך לענות.** הכלל שקבע נבו: כן/לא,

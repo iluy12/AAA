@@ -35,8 +35,18 @@ class RadialFallButton(
 ) : View(context) {
 
     companion object {
-        /** למעלה, ימין, למטה, שמאל — בסדר הזה. */
-        val CATEGORIES = listOf("ברית", "עיניים", "מחשבה", "אחר")
+        /**
+         * למעלה, ימין, למטה, שמאל — בסדר הזה.
+         *
+         * ⚠️ **שלוש בלבד, ו"אחר" הוסר.** הוא לא היה קיים בסולם החומרה,
+         * ולכן היה נופל בשקט לברירת המחדל — כלומר מי שבחר "אחר" במפורש
+         * היה נרשם כנפילה בברית בלי שיידע. שלוש קטגוריות מפורשות עדיפות
+         * על ארבע שאחת מהן משקרת.
+         *
+         * המקום הרביעי נשאר ריק בכוונה: גרירה כלפי מעלה היא התנועה
+         * הטבעית ביותר, והיא שמורה לחמורה.
+         */
+        val CATEGORIES = listOf("ברית", "עיניים", "מחשבה")
 
         /** מרחק מינימלי שנחשב גרירה מכוונת ולא רעד של אצבע. */
         private const val DRAG_THRESHOLD_PX = 60f
@@ -138,10 +148,11 @@ class RadialFallButton(
         if (distanceFromDown() < DRAG_THRESHOLD_PX) return -1
         val dx = curX - downX
         val dy = curY - downY
+        // מעלה=0 (ברית) · ימין=1 (עיניים) · מטה=2 (מחשבה) · שמאל=אין
         return if (kotlin.math.abs(dy) > kotlin.math.abs(dx)) {
             if (dy < 0) 0 else 2
         } else {
-            if (dx > 0) 1 else 3
+            if (dx > 0) 1 else -1
         }
     }
 
@@ -165,10 +176,9 @@ class RadialFallButton(
         val padX = bubbleR + 6f
         val padY = bubbleR + 6f
         val positions = listOf(
-            cx to padY,                        // למעלה
-            width - padX to cy,                // ימין
-            cx to height - padY,               // למטה
-            padX to cy                         // שמאל
+            cx to padY,                        // למעלה — ברית
+            width - padX to cy,                // ימין  — עיניים
+            cx to height - padY                // למטה  — מחשבה
         )
         for (i in CATEGORIES.indices) {
             val (x, y) = positions[i]

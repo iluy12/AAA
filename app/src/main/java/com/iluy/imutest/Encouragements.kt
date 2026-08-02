@@ -186,7 +186,47 @@ object Encouragements {
         Line("תרים את הראש - אתה בן של מלך")
     )
 
+    /**
+     * ⚠️ **בנק מקביל לכל סוג נפילה.** נבו: *"גם הבנק של החיזוקים צריך
+     * להיות מקביל לאותו סוג דיווח."*
+     *
+     * הסיבה שזה נכון: מי שנפל במחשבה ומי שנפל בברית הם בשני מצבים שונים
+     * לגמרי, ומשפט אחד שמתאים לשניהם לא מתאים לאף אחד. **וגנרי נשחק תוך
+     * שבוע.**
+     */
+    private val afterThought = listOf(
+        Line("מחשבה היא לא מעשה. תפסת את זה, וזה בדיוק העבודה"),
+        Line("זה בא והלך. אתה עדיין בדרך"),
+        Line("שים לב לעצמך היום, ותמשיך"),
+        Line("מצווה גדולה להיות בשמחה!")
+    )
+
+    /**
+     * ⚠️ עיניים — נבו: *"צפויים לו ניסיונות קשים ביומיים הקרובים."*
+     * הטון כאן מכין אותו לימים הבאים, לא רק מנחם על מה שהיה.
+     */
+    private val afterEyes = listOf(
+        Line("היומיים הקרובים יהיו קצת יותר קשים. תדע את זה מראש ותהיה מוכן"),
+        Line("עכשיו הזמן לשמור על העיניים כפליים. אתה יכול"),
+        Line("אתה בדרך ליעד. כל אחד יכול לפספס פניה בדרך"),
+        Line("רוצה שנדבר על היומיים הקרובים?", isQuestion = true)
+    )
+
     fun fallAcknowledge(): String = fallAcknowledge.random()
+
+    /**
+     * החיזוק המושהה, לפי חומרת הנפילה ולפי אם זו השנייה היום.
+     *
+     * ⚠️ נפילה שנייה גוברת על הסיווג — יותר מאחת ביום היא תמיד סימן
+     * להתדרדרות, ואז הטון הישיר חשוב יותר מהתאמה לקטגוריה.
+     */
+    fun afterFall(severity: FallSeverity, secondToday: Boolean): Line = when {
+        secondToday -> afterSecondFall.random()
+        severity == FallSeverity.THOUGHT -> afterThought.random()
+        severity == FallSeverity.EYES -> afterEyes.random()
+        else -> afterFirstFall.random()
+    }
+
     fun afterFirstFall(): Line = afterFirstFall.random()
     fun afterSecondFall(): Line = afterSecondFall.random()
 

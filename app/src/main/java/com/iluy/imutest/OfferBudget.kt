@@ -65,6 +65,10 @@ object OfferBudget {
      */
     private fun intensity(context: Context): Int {
         if (FallReport.todayCount(context) > 0) return 2
+        // ⚠️ יומיים אחרי נפילת "עיניים" נחשבים חריגים גם בלי שום אות חדש.
+        // הסיווג הזה מתאר **תחזית** ולא רק עבר, ולכן הוא ממשיך להשפיע
+        // אחרי שהיום עצמו נגמר.
+        if (FallAftermath.inHeightenedWindow(context)) return 2
         val today = CalendarStore.overcomingsToday(context)
         val average = CalendarStore.averageActiveDayOvercomings(context)
         if (average <= 0) return 0
