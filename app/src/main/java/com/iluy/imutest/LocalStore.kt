@@ -166,6 +166,16 @@ object LocalStore {
     const val KEY_Q8_CONSENT_MESSAGE = "q8_consent_message"
     const val KEY_Q10_REFUSALS = "q10_refusals_before_fall"
 
+    /**
+     * הרצף הנקי הארוך ביותר שהמשתמש זוכר, בימים.
+     *
+     * ⚠️ **זה לא עוד נתון — זו נקודת הייחוס האישית שלו.** 14 יום נקיים הם
+     * ניצחון למי שהשיא שלו 10, ושבוע רגיל למי שהשיא שלו 60. בלי המספר
+     * הזה המערכת לא יודעת אם הוא בשיא או בשגרה, ולכן גם המסרים יוצאים
+     * גנריים — ומשפט גנרי נשחק תוך שבוע.
+     */
+    const val KEY_Q11_LONGEST_STREAK = "q11_longest_streak_days"
+
     private const val KEY_Q_DONE = "questionnaire_done"
     private const val KEY_TAP_STANDBY_UNTIL = "tap_standby_until"
     private const val KEY_COOLDOWN_UNTIL = "cooldown_until"

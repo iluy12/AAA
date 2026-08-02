@@ -29,7 +29,9 @@ import java.io.File
 class QuestionnaireActivity : Activity() {
 
     private var step = 0
-    private val totalSteps = 10
+    // 11 ולא 10 — נוספה שאלת הרצף הארוך ביותר. ⚠️ מי שמשנה כאן חייב
+    // להוסיף גם ענף ב-when של renderStep, אחרת השלב האחרון יציג מסך ריק.
+    private val totalSteps = 11
 
     // בחירות זמניות לשלב הנוכחי, נשמרות ל-LocalStore בכל "המשך"
     private var selectedMulti = mutableSetOf<String>()
@@ -131,6 +133,17 @@ class QuestionnaireActivity : Activity() {
                 container, "כשהיצר בא אליך, כמה פעמים אתה מצליח להגיד \"לא\" לפני שקורה משהו?",
                 listOf("פעם אחת", "2-3 פעמים", "4-5 פעמים", "6 ומעלה"),
                 LocalStore.KEY_Q10_REFUSALS
+            )
+            // ⚠️ נקודת הייחוס האישית. בלעדיה המערכת לא יודעת אם רצף של
+            // שבועיים הוא שיא או שגרה — וזה משנה גם את הזיהוי וגם, ובעיקר,
+            // את מה שהיא אומרת לו.
+            10 -> renderSingleChoice(
+                container, "מה הכי הרבה זמן שהחזקת נקי?",
+                listOf(
+                    "כמה ימים", "שבוע", "שבועיים", "חודש",
+                    "כמה חודשים", "יותר משנה", "לא זוכר"
+                ),
+                LocalStore.KEY_Q11_LONGEST_STREAK
             )
         }
 
