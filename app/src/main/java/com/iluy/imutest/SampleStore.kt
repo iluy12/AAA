@@ -100,7 +100,40 @@ object SampleStore {
          */
         val bpmMin: Int = -1,
         val bpmMax: Int = -1,
-        val bpmTrend: Int = 0
+        val bpmTrend: Int = 0,
+        /**
+         * מה שהמערכת **חשבה** ברגע הזה.
+         *
+         * ⚠️ **בלי זה מצב-הצל חסר טעם.** הציונים נרשמו רק ללוג-הדיבאג,
+         * שמוגבל ל-500 שורות ונדרס תוך שעות — כלומר אי-אפשר היה לשאול
+         * "מה היה הציון ביום שלישי ב-21:00", והצטברות ציונים היא כל מה
+         * שמצב-הצל אמור לייצר.
+         *
+         * ⚠️ ו-`score` לבדו חסר משמעות בלי `available`: בשבוע הראשון רוב
+         * האותות אינם ניתנים לחישוב, ולכן ציון 20 מתוך 30 אפשריים אינו
+         * אותו דבר כמו 20 מתוך 60.
+         *
+         * `blocked` מציין איזה שער עצר, או ריק אם כולם עברו. בלעדיו
+         * "לא הוצע" הוא תיבה שחורה.
+         */
+        val score: Int = -1,
+        val available: Int = -1,
+        val blocked: String = "",
+        /**
+         * ⚠️ **מרחק מהמקום הרגיל, והתאמה למקום שנפל בו.** שני אלה נמדדים
+         * ברגע ואינם ניתנים לשחזור מהרשומה — אם לא נשמרו כאן, הם אבודים
+         * לצמיתות. כל שאר האותות ניתנים לחישוב מחדש בדיעבד.
+         */
+        val placeMeters: Int = -1,
+        val knownPlace: Int = -1,
+        /**
+         * האם המשתמש דיווח משהו בסמוך לרשומה הזו — ✕, נפילה או מצב-רוח.
+         *
+         * ⚠️ **זה מה שהופך את הנתונים לניתנים לניתוח.** בלעדיו, השאלה
+         * "איך נראה הציון לפני דיווח" דורשת להצליב שני מקורות לפי חותמות
+         * זמן; איתו היא שאילתה על עמודה אחת.
+         */
+        val nearReport: String = ""
     )
 
     fun append(context: Context, r: Record) {
@@ -120,7 +153,13 @@ object SampleStore {
             r.motion,
             r.bpmMin,
             r.bpmMax,
-            r.bpmTrend
+            r.bpmTrend,
+            r.score,
+            r.available,
+            r.blocked,
+            r.placeMeters,
+            r.knownPlace,
+            r.nearReport
         ).joinToString(",")
 
         val file = File(context.filesDir, FILE_NAME)
@@ -211,6 +250,36 @@ object SampleStore {
      * כה. רשומה ישנה מקבלת 0 — כלומר תיחשב "עם מגע", וזו ההנחה שהייתה
      * בתוקף כשהיא נכתבה ממילא.
      */
+    /**
+     * שורת כותרות, כדי שהקובץ ייפתח כטבלה קריאה ולא כמספרים ערומים.
+     *
+     * ⚠️ **חייבת להישאר מסונכרנת עם [append].** עמודה שנוספת שם ולא כאן
+     * מזיזה את כל הכותרות שאחריה, וניתוח שנעשה על טבלה מוזזת ייראה תקין
+     * לחלוטין ויהיה שגוי לגמרי.
+     */
+    const val CSV_HEADER =
+        "time,hour,bpm,samples,first_ms,steps,still_ms,battery,no_contact," +
+            "grav_x,grav_y,grav_z,motion,bpm_min,bpm_max,bpm_trend," +
+            "score,available,blocked,place_m,known_place,near_report"
+
+    /**
+     * כל הרשומות כטקסט אחד, עם כותרות.
+     *
+     * ⚠️ **זו הדרך היחידה להוציא את מלוא הדאטא מהשעון.** העלאת הלוג
+     * מוגבלת ל-500 שורות ול-60KB, כלומר היא מראה שעות בודדות — ואילו
+     * הניתוח שמצב-הצל קיים בשבילו דורש שבועות. הקובץ הזה הוא הדאטא
+     * המלא, וגם התחליף להעלאה הציבורית כשהיא תוסר.
+     */
+    fun exportAll(context: Context): String {
+        val file = File(context.filesDir, FILE_NAME)
+        if (!file.exists()) return CSV_HEADER + "\n"
+        return try {
+            CSV_HEADER + "\n" + file.readText()
+        } catch (e: Exception) {
+            CSV_HEADER + "\n"
+        }
+    }
+
     /** מוחק את כל הרשומות ומאפס את המונה. ראו [Baseline.reset]. */
     fun clear(context: Context) {
         runCatching { File(context.filesDir, FILE_NAME).delete() }
@@ -238,7 +307,13 @@ object SampleStore {
                 motion = if (p.size > 12) (p[12].toIntOrNull() ?: -1) else -1,
                 bpmMin = if (p.size > 13) (p[13].toIntOrNull() ?: -1) else -1,
                 bpmMax = if (p.size > 14) (p[14].toIntOrNull() ?: -1) else -1,
-                bpmTrend = if (p.size > 15) (p[15].toIntOrNull() ?: 0) else 0
+                bpmTrend = if (p.size > 15) (p[15].toIntOrNull() ?: 0) else 0,
+                score = if (p.size > 16) (p[16].toIntOrNull() ?: -1) else -1,
+                available = if (p.size > 17) (p[17].toIntOrNull() ?: -1) else -1,
+                blocked = if (p.size > 18) p[18] else "",
+                placeMeters = if (p.size > 19) (p[19].toIntOrNull() ?: -1) else -1,
+                knownPlace = if (p.size > 20) (p[20].toIntOrNull() ?: -1) else -1,
+                nearReport = if (p.size > 21) p[21] else ""
             )
         } catch (e: Exception) {
             null

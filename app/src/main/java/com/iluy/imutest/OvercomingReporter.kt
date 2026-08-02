@@ -42,7 +42,7 @@ object OvercomingReporter {
         val todayCount = CalendarStore.recordOvercoming(context)
         // ⚠️ פותח את שער הקירור. בלי זה המערכת יכולה להציע שנייה אחרי
         // שהוא בעצמו סימן ✕ — כלומר בדיוק כשהוא כבר טיפל בזה.
-        OfferBudget.recordUserReport(context)
+        OfferBudget.recordUserReport(context, "overcoming")
         val threshold = LocalStore.getPersonalThreshold(context)
         EventLog.log(
             context, "INFO",

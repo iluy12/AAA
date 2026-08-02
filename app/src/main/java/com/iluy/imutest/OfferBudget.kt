@@ -117,8 +117,28 @@ object OfferBudget {
     }
 
     /** נקרא בכל דיווח של המשתמש — ✕, נפילה, מצב-רוח. */
-    fun recordUserReport(context: Context) {
-        prefs(context).edit().putLong("last_report_ms", System.currentTimeMillis()).apply()
+    fun recordUserReport(context: Context, kind: String = "report") {
+        prefs(context).edit()
+            .putLong("last_report_ms", System.currentTimeMillis())
+            .putString("last_report_kind", kind)
+            .apply()
+    }
+
+    /**
+     * סוג הדיווח האחרון, אם היה בשעה האחרונה. אחרת ריק.
+     *
+     * ⚠️ **זה מה שהופך את הנתונים לניתנים לניתוח.** בלעדיו, השאלה "איך
+     * נראה הציון בדקות שלפני דיווח" דורשת להצליב שני מקורות לפי חותמות
+     * זמן ולקוות שהשעונים מסונכרנים. עם התיוג היא שאילתה על עמודה אחת.
+     *
+     * שעה ולא פחות: החלון שמעניין ללמידה הוא חצי שעה עד שעה שקדמה, ולכן
+     * רשומות מהטווח הזה צריכות לשאת את התיוג.
+     */
+    fun recentReportLabel(context: Context): String {
+        val last = prefs(context).getLong("last_report_ms", 0L)
+        if (last == 0L) return ""
+        if (System.currentTimeMillis() - last > 60 * 60 * 1000L) return ""
+        return prefs(context).getString("last_report_kind", "report") ?: "report"
     }
 
     fun describe(context: Context): String =

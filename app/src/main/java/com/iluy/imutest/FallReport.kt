@@ -110,7 +110,7 @@ object FallReport {
 
         // ⚠️ בלי זה שער הקירור מת: `inCooldownAfterReport` היה מחזיר false
         // תמיד, והמערכת יכלה לקפוץ עליו שנייה אחרי שדיווח על נפילה.
-        OfferBudget.recordUserReport(context)
+        OfferBudget.recordUserReport(context, "fall_${severity.label}")
 
         // ⚠️ קרי לילה מדווח בבוקר על מה שקרה בשינה — חצי השעה שקדמה
         // לדיווח היא ארוחת בוקר, לא האירוע. ניתוח החלון כאן היה מייצר

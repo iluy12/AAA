@@ -242,6 +242,21 @@ class MainActivity : Activity() {
             // הסדר הנכון: קודם לשלוח את לוג-הלילה, אחר-כך לסרוק, ולשלוח שוב.
             // מחיקת הבסיס והרשומות. נחוץ אחרי תיקון שמשנה מה נחשב מנוחה —
             // בסיס מזוהם אינו ניתן לתיקון בדיעבד, ראו Baseline.reset.
+            // ⚠️ **הדרך היחידה להוציא את מלוא הדאטא.** העלאת הלוג מוגבלת
+            // ל-500 שורות ול-60KB — שעות בודדות — והניתוח שמצב-הצל קיים
+            // בשבילו דורש שבועות.
+            container.addView(secondaryButton("ייצא נתונים ← קבל כתובת") {
+                Thread {
+                    val body = SampleStore.exportAll(this)
+                    val result = LogUploader.uploadText(body)
+                    runOnUiThread {
+                        logDisplay?.apply {
+                            text = "${SampleStore.count(this@MainActivity)} רשומות\n\n$result"
+                            visibility = android.view.View.VISIBLE
+                        }
+                    }
+                }.start()
+            })
             container.addView(secondaryButton("אפס בסיס דופק") {
                 Baseline.reset(this)
                 SampleStore.clear(this)

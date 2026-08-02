@@ -678,16 +678,31 @@ class TapDetectorService : Service(), SensorEventListener {
             } else 0
         )
 
-        SampleStore.append(this, record)
-        Baseline.learn(this, record)
-        Posture.learn(this, record)
+        // ⚠️ **הציון מחושב לפני השמירה ונשמר בתוך הרשומה.** קודם הוא נרשם
+        // רק ללוג-הדיבאג שנדרס תוך שעות — כלומר מצב-הצל "צבר" ציונים
+        // שנמחקו, ואי-אפשר היה לשאול מה היה הציון אתמול. אותות המיקום
+        // בכלל אינם ניתנים לשחזור בדיעבד, ולכן אם לא נשמרו כאן הם אבודים.
+        val risk = RiskScore.evaluate(this, record)
+        val scored = record.copy(
+            score = if (risk.gatesPassed) risk.score else -1,
+            available = if (risk.gatesPassed) risk.available else -1,
+            blocked = risk.blockedBy ?: "",
+            placeMeters = PlaceTracker.distanceFromUsual(this),
+            knownPlace = RoomPrint.capture(this, LastMagnitude.value)
+                ?.let { RoomPrint.matchesKnownFallPlace(this, it) }
+                ?.let { (it * 100).toInt() } ?: -1,
+            nearReport = OfferBudget.recentReportLabel(this)
+        )
+
+        SampleStore.append(this, scored)
+        Baseline.learn(this, scored)
+        Posture.learn(this, scored)
 
         // ⚠️ **מצב-צל.** המנוע מחשב, מחליט, ורושם — ולא אומר כלום למשתמש.
         // רק אחרי שיצטבר פיזור אמיתי של ציונים אפשר יהיה לדעת איפה עובר
         // הקו; כל סף שהיה נקבע עכשיו הוא ניחוש. וזה גם מונע שהפיצ'ר
         // המרכזי יישרף בשבוע הראשון על התראות שווא.
         if (DebugConfig.DEBUG_TAG_ENABLED) {
-            val risk = RiskScore.evaluate(this, record)
             EventLog.log(
                 this, "RISK",
                 if (risk.gatesPassed) {
