@@ -158,6 +158,11 @@
             android:exported="false"
             android:excludeFromRecents="true" />
 
+        <!-- ⚠️ מסך אימות זמני לתקופת הכיול. אמור לרדת לפני הפצה. -->
+        <activity
+            android:name=".StatusActivity"
+            android:exported="false" />
+
         <receiver
             android:name=".BootReceiver"
             android:exported="true">

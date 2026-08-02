@@ -131,6 +131,10 @@ class MainActivity : Activity() {
                     MenuCarousel.Page(
                         "הלוח שלי", "התגברויות ונפילות", "#2E7D5B"
                     ) { InfoActivity.launch(it) },
+                    // ⚠️ מסך זמני לתקופת הכיול — ראו StatusActivity.
+                    MenuCarousel.Page(
+                        "מה רואים", "מה המערכת קולטת עכשיו", "#5A4A7D"
+                    ) { StatusActivity.launch(it) },
                     MenuCarousel.Page(
                         "אפליקציות", "כל מה שיש בשעון", "#4A4A4A"
                     ) { AppDrawerActivity.launch(it) },
