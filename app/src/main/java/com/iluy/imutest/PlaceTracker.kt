@@ -47,18 +47,18 @@ object PlaceTracker {
         ) == PackageManager.PERMISSION_GRANTED
 
     /**
-     * ⚠️ **"בחינם" התברר כ"ריק".** הגרסה הראשונה קראה רק את המיקום האחרון
-     * הידוע, בהנחה שמדידת המיקום השעתית של היצרן משאירה ערך במטמון של
-     * אנדרואיד. בלוג של 2026-07-31 חזר `place_m=-1` בכל פרץ למרות שההרשאה
-     * ניתנה — כלומר אין מטמון כזה, והיצרן כותב למסד שלו בלבד.
+     * ⚠️ **"בחינם" התברר כ"ריק", והתיקון התברר כמזיק.**
      *
-     * לכן נדרשת בקשה אמיתית אחת. היא לא רצה בכל פרץ אלא לכל היותר
-     * [REFRESH_INTERVAL_MS], כי מיקום כמעט לא משתנה בין פרץ לפרץ ואין
-     * סיבה להדליק מקלט כל שתי דקות.
+     * הגרסה הראשונה קראה רק מיקום אחרון-ידוע, בהנחה שמדידת המיקום השעתית
+     * של היצרן משאירה ערך במטמון של אנדרואיד. היא חזרה `place_m=-1` בכל
+     * פרץ — אין מטמון כזה, היצרן כותב למסד שלו בלבד.
+     *
+     * הגרסה השנייה הוסיפה בקשת מיקום אמיתית, ו**שברה את מד התאוצה**.
+     * ראו את ההערה בגוף הפונקציה.
+     *
+     * לכן כרגע: קריאה בלבד, ובפועל תמיד ריקה. המיקום יחזור כערוץ נפרד
+     * עם תזמון משלו, לא מתוך הפרץ.
      */
-    private const val REFRESH_INTERVAL_MS = 30 * 60 * 1000L
-    private var lastRequestElapsedMs = 0L
-
     private fun lastKnown(context: Context): Location? {
         if (!hasPermission(context)) return null
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
@@ -70,45 +70,21 @@ object PlaceTracker {
             runCatching { lm.getLastKnownLocation(it) }.getOrNull()
         }
 
-        val now = android.os.SystemClock.elapsedRealtime()
-        val due = lastRequestElapsedMs == 0L || now - lastRequestElapsedMs > REFRESH_INTERVAL_MS
-        if (due) {
-            lastRequestElapsedMs = now
-            requestOneFix(context, lm, providers)
-        }
-
-        // הערך שחוזר עכשיו הוא עדיין הישן — הבקשה א-סינכרונית והתוצאה
-        // תיכנס למטמון לפרץ הבא. זה מקובל: השאלה היא "אותו מקום או לא",
-        // ופרץ אחד של פיגור אינו משנה אותה.
+        // ⚠️ **קריאה בלבד. אין כאן בקשת מיקום.**
+        //
+        // הבקשה הפעילה הייתה כאן, והיא רצה מתוך persistBurst — כלומר בתוך
+        // מחזור החיים של הפרץ. בלוג של 2026-07-31 מד התאוצה עבד 51 פרצים
+        // רצופים (accel_n≈1100), ונפל לאפס בדיוק בפרץ הראשון אחרי התקנת
+        // הבנייה שהוסיפה את הבקשה. השינוי היחיד בין הגרסאות היה הוא.
+        //
+        // הסיבה המדויקת לא ידועה — ייתכן שהדלקת מקלט המיקום מפריעה למרכזת
+        // החיישנים במכשיר הזה. **ולא צריך לדעת כדי להחליט:** מד התאוצה
+        // שווה יותר מהמיקום, ולכן המיקום יוצא מהמסלול הזה ויחזור בנפרד,
+        // על תזמון משלו, אחרי שיאומת שהתאוצה יציבה שוב.
+        //
+        // ⚠️ הלקח: שיניתי שני דברים בלי לאמת את הראשון, וזה עלה לילה שלם
+        // של נתוני תנוחה.
         return cached
-    }
-
-    /**
-     * בקשה בודדת, ומיד מתנתקים.
-     *
-     * ⚠️ `requestSingleUpdate` ולא `requestLocationUpdates` מתמשך: מאזין
-     * שנשאר רשום מחזיק את המקלט דלוק ושורף סוללה בשקט — וזו בדיוק סוג
-     * התקלה שלא רואים עד שמסתכלים על צריכה של יממה.
-     */
-    private fun requestOneFix(context: Context, lm: LocationManager, providers: List<String>) {
-        val provider = providers.firstOrNull { runCatching { lm.isProviderEnabled(it) }.getOrDefault(false) }
-            ?: return
-        runCatching {
-            lm.requestSingleUpdate(
-                provider,
-                object : android.location.LocationListener {
-                    override fun onLocationChanged(location: Location) {
-                        EventLog.log(context, "INFO", "location_fix;provider=$provider;acc=${location.accuracy.toInt()}")
-                    }
-                    override fun onStatusChanged(p: String?, s: Int, e: android.os.Bundle?) {}
-                    override fun onProviderEnabled(p: String) {}
-                    override fun onProviderDisabled(p: String) {}
-                },
-                android.os.Looper.getMainLooper()
-            )
-        }.onFailure {
-            EventLog.log(context, "INFO", "location_request_failed;${it.javaClass.simpleName}")
-        }
     }
 
     /**
