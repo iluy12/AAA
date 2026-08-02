@@ -52,6 +52,14 @@ object RiskScore {
     private const val W_TODAY_VS_USUAL = 6
     private const val W_USUAL_PLACE = 6
 
+    /**
+     * ⚠️ **8 ולא 6.** נבו נתן 6 ל"במקום הרגיל שלו", אבל זה אות אחר וחזק
+     * יותר: לא "האם הוא בבית" אלא **"האם הוא בדיוק במקום שבו זה כבר קרה
+     * פעמיים"**. הוא נלמד מהתנהגות ולא מהצהרה, ולכן הוא גם לא סובל
+     * מהבעיה של "רוב הזמן הוא בבית".
+     */
+    private const val W_KNOWN_FALL_PLACE = 8
+
     // ⚠️ **אין כאן MAX_SCORE בכוונה.** היה כזה, והציון חולק בו — אבל
     // המקסימום התיאורטי אינו בר-השגה ברוב הזמן, כי אותות שלמים אינם
     // ניתנים לחישוב עד שיצטברו נתונים. הנרמול עבר ל-`available`, שנצבר
@@ -163,6 +171,17 @@ object RiskScore {
         add(
             "place", W_USUAL_PLACE,
             PlaceTracker.atUsualPlace(context)?.let { if (it) 1.0 else 0.0 }
+        )
+
+        // --- ⚠️ במקום שבו כבר נפל בעבר ---
+        //
+        // זהו אות **חזק יותר** מ"במקום הרגיל", כי הוא לא שואל אם הוא בבית
+        // אלא אם הוא **בדיוק שם**. הוא נלמד לבד מדיווחי נפילה ודורש שתיים
+        // לפחות מאותו מקום — נפילה אחת אינה דפוס.
+        add(
+            "known_place", W_KNOWN_FALL_PLACE,
+            RoomPrint.capture(context, LastMagnitude.value)
+                ?.let { RoomPrint.matchesKnownFallPlace(context, it) }
         )
 
         return Result(true, null, score, available, parts.toString().trimEnd(','))

@@ -44,17 +44,20 @@ object RiskContext {
         }
     }
 
-    /** התדירות שהצהיר עליה, בימים בין נפילות. */
-    private fun declaredIntervalDays(context: Context): Double =
-        when (LocalStore.getSingleChoice(context, LocalStore.KEY_Q2_FREQUENCY)) {
-            "כל יום" -> 1.0
-            "כמה פעמים בשבוע" -> 2.5
-            "פעם בשבוע" -> 7.0
-            "כל שבועיים" -> 14.0
-            "כל חודש" -> 30.0
-            "כל חודשיים" -> 60.0
-            else -> 0.0
-        }
+    /**
+     * המרווח שהצהיר עליו, בימים בין נפילות.
+     *
+     * ⚠️ **נגזר ממספר ולא מטקסט.** השאלה היא כמה פעמים נפל בחודש האחרון,
+     * ומכאן המרווח הוא 30 חלקי המספר. קודם היו כאן קטגוריות טקסט
+     * ("כל שבועיים") שאני המרתי למספרים בניחוש — כלומר האלגוריתם ניזון
+     * מהערכות שלי ולא מנתון של המשתמש.
+     */
+    private fun declaredIntervalDays(context: Context): Double {
+        val perMonth = LocalStore.getSingleChoice(context, LocalStore.KEY_Q2_FREQUENCY)
+            .toIntOrNull() ?: 0
+        if (perMonth <= 0) return 0.0
+        return 30.0 / perMonth
+    }
 
     /**
      * כמה ימים עברו מהנפילה האחרונה, ביחס לקצב הרגיל שלו.
@@ -118,15 +121,9 @@ object RiskContext {
         return (today / (usual * 2.0)).coerceIn(0.0, 1.0)
     }
 
-    /** מה שהצהיר בשאלון על כמה פעמים הוא אומר "לא" לפני שקורה משהו. */
+    /** כמה פעמים הוא אומר "לא" לפני שקורה משהו. מספר ישיר מהשאלון. */
     private fun declaredThresholdCount(context: Context): Double =
-        when (LocalStore.getSingleChoice(context, LocalStore.KEY_Q10_REFUSALS)) {
-            "פעם אחת" -> 1.0
-            "2-3 פעמים" -> 2.5
-            "4-5 פעמים" -> 4.5
-            "6 ומעלה" -> 6.0
-            else -> 0.0
-        }
+        LocalStore.getSingleChoice(context, LocalStore.KEY_Q10_REFUSALS).toDoubleOrNull() ?: 0.0
 
     private fun blend(declared: Double, observed: Double?, observedCount: Int): Double {
         if (observed == null || observedCount <= 0) return declared

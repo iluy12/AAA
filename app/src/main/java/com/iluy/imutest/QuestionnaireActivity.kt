@@ -89,10 +89,14 @@ class QuestionnaireActivity : Activity() {
                 listOf("בוקר", "צהריים", "לילה"),
                 LocalStore.KEY_Q1_TIMES
             )
-            1 -> renderSingleChoice(
-                container, "כל כמה זמן?",
-                listOf("כל יום", "כמה פעמים בשבוע", "פעם בשבוע", "כל שבועיים", "כל חודש", "כל חודשיים"),
-                LocalStore.KEY_Q2_FREQUENCY
+            // ⚠️ "כל כמה זמן" הוחלף ב"כמה פעמים בחודש האחרון" — שאלה על
+            // מספר שקרה בפועל קלה לזכור מהערכת תדירות, והיא גם מה שהאלגוריתם
+            // באמת צריך: מרווח ממוצע בימים.
+            1 -> renderNumber(
+                container, "בחודש האחרון, כמה פעמים נפלת?",
+                LocalStore.KEY_Q2_FREQUENCY,
+                shortcuts = listOf(1, 2, 4, 8, 15),
+                suffix = "פעמים"
             )
             2 -> renderSingleChoice(
                 container, "אותו חדר בכל פעם, או משתנה?",
@@ -129,21 +133,20 @@ class QuestionnaireActivity : Activity() {
             )
             // הנתון שקובע מתי המערכת מציעה חיזוק מורחב. מחליף סף שהומצא
             // ("שנייה בשעה") בסף שיש לו משמעות אצל האדם הזה.
-            9 -> renderSingleChoice(
+            9 -> renderNumber(
                 container, "כשהיצר בא אליך, כמה פעמים אתה מצליח להגיד \"לא\" לפני שקורה משהו?",
-                listOf("פעם אחת", "2-3 פעמים", "4-5 פעמים", "6 ומעלה"),
-                LocalStore.KEY_Q10_REFUSALS
+                LocalStore.KEY_Q10_REFUSALS,
+                shortcuts = listOf(1, 2, 3, 5, 8),
+                suffix = "פעמים"
             )
             // ⚠️ נקודת הייחוס האישית. בלעדיה המערכת לא יודעת אם רצף של
             // שבועיים הוא שיא או שגרה — וזה משנה גם את הזיהוי וגם, ובעיקר,
             // את מה שהיא אומרת לו.
-            10 -> renderSingleChoice(
-                container, "מה הכי הרבה זמן שהחזקת נקי?",
-                listOf(
-                    "כמה ימים", "שבוע", "שבועיים", "חודש",
-                    "כמה חודשים", "יותר משנה", "לא זוכר"
-                ),
-                LocalStore.KEY_Q11_LONGEST_STREAK
+            10 -> renderNumber(
+                container, "מה הכי הרבה ימים שהחזקת נקי?",
+                LocalStore.KEY_Q11_LONGEST_STREAK,
+                shortcuts = listOf(7, 14, 30, 60, 90),
+                suffix = "ימים"
             )
         }
 
@@ -345,6 +348,30 @@ class QuestionnaireActivity : Activity() {
     }
 
     // ---------- ניווט ----------
+
+    /**
+     * שאלה שהתשובה שלה מספר.
+     *
+     * ⚠️ **הוחלפו כאן שאלות שהיו טקסט גס.** "כמה חודשים" חייב אותי להמיר
+     * ל-75 ימים בניחוש, ו"2-3 פעמים" ל-2.5 — כלומר האלגוריתם ניזון
+     * ממספרים שהמצאתי, בדיוק הדבר שהמוצר נמנע ממנו בכל מקום אחר. מספר
+     * שהמשתמש בחר בעצמו הוא הנתון, לא פרשנות שלו.
+     */
+    private fun renderNumber(
+        container: LinearLayout,
+        title: String,
+        key: String,
+        shortcuts: List<Int>,
+        suffix: String
+    ) {
+        addTitle(container, title)
+        val current = LocalStore.getSingleChoice(this, key).toIntOrNull() ?: 0
+        container.addView(
+            NumberPicker.build(this, current, shortcuts, suffix) { picked ->
+                LocalStore.saveSingleChoice(this, key, picked.toString())
+            }
+        )
+    }
 
     private fun addTitle(container: LinearLayout, title: String) {
         container.addView(TextView(this).apply {

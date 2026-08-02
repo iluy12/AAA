@@ -100,6 +100,15 @@ class TapDetectorService : Service(), SensorEventListener {
     private var accelMagSum = 0.0
     private var accelMagSqSum = 0.0
 
+    // --- מגנטומטר, לטביעת החדר ---
+    //
+    // ⚠️ רץ בתוך הפרץ בלבד, כמו מד התאוצה. לשדה המגנטי בתוך מבנה יש
+    // חתימה שמשתנה בין חדרים, והוא עובד גם בלי רשתות WiFi ובלי קליטה —
+    // כלומר מכסה בדיוק את המקרה שבו טביעת WiFi חסרת תועלת.
+    private var magSensor: Sensor? = null
+    private var magSum = 0.0
+    private var magCount = 0
+
     // צורת הדופק בתוך הפרץ
     private var burstBpmMin = Int.MAX_VALUE
     private var burstBpmMax = Int.MIN_VALUE
@@ -445,6 +454,15 @@ class TapDetectorService : Service(), SensorEventListener {
                     accelCount++
                 }
             }
+            Sensor.TYPE_MAGNETIC_FIELD -> {
+                if (burstInProgress) {
+                    val x = event.values.getOrNull(0) ?: 0f
+                    val y = event.values.getOrNull(1) ?: 0f
+                    val z = event.values.getOrNull(2) ?: 0f
+                    magSum += kotlin.math.sqrt((x * x + y * y + z * z).toDouble())
+                    magCount++
+                }
+            }
             Sensor.TYPE_STEP_COUNTER -> {
                 // הערך מצטבר מאז האתחול, ולכן מה שמעניין הוא ההפרש.
                 // נשמר כ-Long למרות שהחיישן מוסר float: מעל ~16.7 מיליון
@@ -556,6 +574,7 @@ class TapDetectorService : Service(), SensorEventListener {
         accelCount = 0
         accelSumX = 0.0; accelSumY = 0.0; accelSumZ = 0.0
         accelMagSum = 0.0; accelMagSqSum = 0.0
+        magSum = 0.0; magCount = 0
         burstBpmMin = Int.MAX_VALUE; burstBpmMax = Int.MIN_VALUE
         burstFirstHalfSum = 0; burstFirstHalfN = 0
         burstSecondHalfSum = 0; burstSecondHalfN = 0
@@ -581,6 +600,10 @@ class TapDetectorService : Service(), SensorEventListener {
         val accelOk = accelSensor?.let {
             sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
         }
+
+        // המגנטומטר, לטביעת החדר. אותו קצב מהסיבה שכבר נמדדה כאן.
+        magSensor = sensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD)
+        magSensor?.let { sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL) }
         EventLog.log(
             this, "INFO",
             "accel_register;sensor=${accelSensor?.name ?: "null"};result=${accelOk ?: "no_sensor"}"
@@ -707,6 +730,12 @@ class TapDetectorService : Service(), SensorEventListener {
 
         heartRateSensor?.let { runCatching { sensorManager.unregisterListener(this, it) } }
         accelSensor?.let { runCatching { sensorManager.unregisterListener(this, it) } }
+        magSensor?.let { runCatching { sensorManager.unregisterListener(this, it) } }
+
+        // ⚠️ נשמר לזיכרון סטטי כדי שדיווח נפילה — שקורה ב-Activity אחרת —
+        // יוכל לצרף אותו לטביעת המקום. בלי זה הטביעה הייתה חסרה בדיוק את
+        // המקור שעובד כשאין WiFi.
+        LastMagnitude.value = if (magCount > 0) (magSum / magCount).toInt() else 0
 
         // ⚠️ `first_sample_ms` הוא המספר שבשבילו הפרץ מודד את עצמו: כמה זמן
         // החיישן האופטי צריך כדי להיתפס על העור אחרי הדלקה. לא ידענו אותו,

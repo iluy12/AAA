@@ -99,6 +99,15 @@ object FallReport {
         // ⚠️ "עיניים" פותחת חלון ערנות של יומיים — היא מתארת עתיד ולא עבר.
         FallAftermath.record(context, severity)
 
+        // ⚠️ טביעת המקום נשמרת **רק לנפילות שקרו כאן ועכשיו.** קרי לילה
+        // מדווח בבוקר על השינה, ולכן המקום שבו הוא עומד בזמן הדיווח אינו
+        // המקום שבו זה קרה — שמירה שלו הייתה מלמדת את המערכת את המטבח.
+        if (severity.reportIsNearEvent) {
+            RoomPrint.capture(context, LastMagnitude.value)?.let {
+                RoomPrint.rememberFallLocation(context, it)
+            }
+        }
+
         // ⚠️ בלי זה שער הקירור מת: `inCooldownAfterReport` היה מחזיר false
         // תמיד, והמערכת יכלה לקפוץ עליו שנייה אחרי שדיווח על נפילה.
         OfferBudget.recordUserReport(context)
