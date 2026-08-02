@@ -657,6 +657,23 @@ class TapDetectorService : Service(), SensorEventListener {
 
         SampleStore.append(this, record)
         Baseline.learn(this, record)
+        Posture.learn(this, record)
+
+        // ⚠️ **מצב-צל.** המנוע מחשב, מחליט, ורושם — ולא אומר כלום למשתמש.
+        // רק אחרי שיצטבר פיזור אמיתי של ציונים אפשר יהיה לדעת איפה עובר
+        // הקו; כל סף שהיה נקבע עכשיו הוא ניחוש. וזה גם מונע שהפיצ'ר
+        // המרכזי יישרף בשבוע הראשון על התראות שווא.
+        if (DebugConfig.DEBUG_TAG_ENABLED) {
+            val risk = RiskScore.evaluate(this, record)
+            EventLog.log(
+                this, "RISK",
+                if (risk.gatesPassed) {
+                    "score=${risk.score};${risk.parts};${OfferBudget.describe(this)}"
+                } else {
+                    "blocked=${risk.blockedBy}"
+                }
+            )
+        }
 
         if (DebugConfig.DEBUG_TAG_ENABLED) {
             val level = Baseline.levelFor(this, hour)
