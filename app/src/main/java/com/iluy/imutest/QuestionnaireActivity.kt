@@ -366,11 +366,21 @@ class QuestionnaireActivity : Activity() {
     ) {
         addTitle(container, title)
         val current = LocalStore.getSingleChoice(this, key).toIntOrNull() ?: 0
+        var chosen = current
         container.addView(
             NumberPicker.build(this, current, shortcuts, suffix) { picked ->
+                chosen = picked
                 LocalStore.saveSingleChoice(this, key, picked.toString())
             }
         )
+        // ⚠️ **בלי זה השאלון נתקע.** כל שאר סוגי השאלות מוסיפים את כפתור
+        // ההמשך בעצמם, ו-renderNumber נכתב בלעדיו — כלומר המשתמש הגיע
+        // לשאלה ולא הייתה לו דרך להתקדם ממנה. מסך ללא מוצא הוא שיתוק,
+        // לא באג קוסמטי.
+        addNextButton(container) {
+            LocalStore.saveSingleChoice(this, key, chosen.toString())
+            advance()
+        }
     }
 
     private fun addTitle(container: LinearLayout, title: String) {
