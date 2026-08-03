@@ -39,29 +39,41 @@ object DataSanity {
     /** מתחת לזה אין מספיק נתונים כדי לומר משהו. */
     private const val MIN_RECORDS = 20
 
+    /** שני החלונות של הדוח. ראו [report]. */
+    data class Report(
+        val recent: List<Finding>?,
+        val recentCount: Int,
+        val whole: List<Finding>,
+        val wholeCount: Int
+    )
+
     /**
-     * הבדיקה על כל ההיסטוריה **ועל היממה האחרונה בנפרד**.
+     * שני חלונות: **היממה האחרונה**, ואז כל ההיסטוריה.
      *
-     * ⚠️ **בלי החלון הקצר, תקלה חדשה נבלעת בהיסטוריה הישנה.** ככל שנצבור
-     * נתונים, יום שבור אחד יהיה אחוז קטן מהכל — כלומר **בדיוק כשהאיסוף
-     * מתארך והבדיקה נעשית חשובה יותר, היא נעשית עיוורת יותר.** תיקון
-     * שיישבר בעוד חודש לא ייצור אף אחוז מורגש.
+     * ⚠️ **הסיבה שזה שני חלקים ולא אחד היא שאחרת אי-אפשר לדעת אם תיקון
+     * עבד.** הרשומות השבורות נשארות באחסון לנצח, ולכן ממצא על כל
+     * ההיסטוריה ימשיך לצעוק גם אחרי שהבאג נסגר — כלומר בדיוק השאלה
+     * שבשבילה הבדיקה נבנתה נשארת פתוחה.
      *
-     * ולכן ממצא שקיים רק ביממה האחרונה מדווח בנפרד ובמפורש.
+     * ⚠️ ויש כאן צד שני, הפוך ולא פחות חשוב: ככל שההיסטוריה גדלה, יום
+     * **חדש** שנשבר הוא אחוז זעום מהכל ונבלע. **בדיוק כשהאיסוף מתארך
+     * והבדיקה נעשית חשובה יותר, היא נעשית עיוורת יותר.**
+     *
+     * חלון היממה פותר את שניהם: הוא גם מוכיח שתיקון עבד, וגם תופס שבירה
+     * חדשה ביום שהיא קרתה.
+     *
+     * `recent = null` פירושו שעדיין אין מספיק רשומות ביממה כדי לומר משהו
+     * — ולא "נקי".
      */
-    fun checkAll(records: List<SampleStore.Record>): List<Finding> {
-        val whole = check(records)
+    fun report(records: List<SampleStore.Record>): Report {
         val dayAgo = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
         val recent = records.filter { it.timestampMs >= dayAgo }
-        if (recent.size < MIN_RECORDS) return whole
-
-        val seen = whole.map { it.code }.toSet()
-        val fresh = check(recent)
-            .filter { it.level != Level.OK && it.code !in seen }
-            .map { it.copy(text = "ביממה האחרונה בלבד — " + it.text) }
-        // ⚠️ אם היממה האחרונה מצאה משהו, שורת ה"נקי" של ההיסטוריה יורדת —
-        // אחרת המסך היה אומר "לא נמצא שילוב בלתי אפשרי" ומיד אחריה ממצא.
-        return if (fresh.isEmpty()) whole else whole.filter { it.level != Level.OK } + fresh
+        return Report(
+            recent = if (recent.size < MIN_RECORDS) null else check(recent),
+            recentCount = recent.size,
+            whole = check(records),
+            wholeCount = records.size
+        )
     }
 
     fun check(records: List<SampleStore.Record>): List<Finding> {
@@ -269,17 +281,31 @@ object DataSanity {
         return out
     }
 
-    /** גרסה קצרה למסך. */
+    private fun mark(level: Level) = when (level) {
+        Level.ERROR -> "✖"
+        Level.WARN -> "▲"
+        Level.OK -> "✓"
+    }
+
+    private fun lines(findings: List<Finding>) =
+        findings.joinToString("\n\n") { "${mark(it.level)} ${it.text}" }
+
+    /**
+     * הדוח למסך.
+     *
+     * ⚠️ **היממה האחרונה למעלה, וההיסטוריה מתחת.** זה לא סידור אלא עיקר:
+     * החלק העליון עונה על "האם המכשיר תקין **עכשיו**", והתחתון הוא רק
+     * הקשר. בסדר ההפוך התשובה החשובה הייתה נקברת מתחת לתקלות שכבר תוקנו.
+     */
     fun describe(context: Context): String {
-        val findings = checkAll(SampleStore.since(context, 0L))
-        return findings.joinToString("\n\n") { f ->
-            val mark = when (f.level) {
-                Level.ERROR -> "✖"
-                Level.WARN -> "▲"
-                Level.OK -> "✓"
-            }
-            "$mark ${f.text}"
+        val r = report(SampleStore.since(context, 0L))
+        val rec = r.recent
+        val head = if (rec == null) {
+            "── היממה האחרונה ──\nרק ${r.recentCount} רשומות. מעט מדי כדי לומר משהו."
+        } else {
+            "── היממה האחרונה (${r.recentCount} רשומות) ──\n" + lines(rec)
         }
+        return head + "\n\n\n── כל ההיסטוריה (${r.wholeCount}) ──\n" + lines(r.whole)
     }
 
     /**
@@ -289,6 +315,13 @@ object DataSanity {
      * להיות הדבר הראשון שנראה — לא משהו שצריך לגלול אליו. תו `#` מאפשר
      * לכל כלי ניתוח לדלג עליהן.
      */
-    fun exportHeader(records: List<SampleStore.Record>): String =
-        checkAll(records).joinToString("\n") { "# [${it.level}] ${it.code}: ${it.text}" } + "\n"
+    fun exportHeader(records: List<SampleStore.Record>): String {
+        val r = report(records)
+        val fmt = { scope: String, f: List<Finding> ->
+            f.joinToString("\n") { "# [$scope][${it.level}] ${it.code}: ${it.text}" }
+        }
+        val recent = r.recent?.let { fmt("24h", it) }
+            ?: "# [24h][NONE] too_few: ${r.recentCount} רשומות ביממה האחרונה"
+        return recent + "\n" + fmt("all", r.whole) + "\n"
+    }
 }
