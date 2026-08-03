@@ -81,6 +81,16 @@ class FallPickerActivity : Activity() {
         private var curY = 0f
         private var touching = false
 
+        /** ראו הערת-השדה המקבילה ב-WatchFaceActivity — אותו שורש. */
+        private var farDist = 0f
+        private var moveCount = 0
+
+        private fun dist(x: Float, y: Float): Float {
+            val dx = x - downX
+            val dy = y - downY
+            return kotlin.math.sqrt(dx * dx + dy * dy)
+        }
+
         private val bubblePaint = Paint(Paint.ANTI_ALIAS_FLAG)
         private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             textAlign = Paint.Align.CENTER
@@ -129,6 +139,8 @@ class FallPickerActivity : Activity() {
                 MotionEvent.ACTION_DOWN -> {
                     downX = event.x; downY = event.y
                     curX = downX; curY = downY
+                    farDist = 0f
+                    moveCount = 0
                     touching = true
                     // ⚠️ חגורה ושלייקס: גם במסך מלא, אם מישהו יעטוף את זה
                     // בעתיד במיכל גליל — הגרירה תישבר בשקט בדיוק כמו קודם.
@@ -136,7 +148,11 @@ class FallPickerActivity : Activity() {
                     invalidate()
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    curX = event.x; curY = event.y
+                    moveCount++
+                    // ⚠️ **הרחוקה ביותר, לא האחרונה.** אצבע שחוזרת לאמצע
+                    // לפני ההרמה ביטלה את הבחירה, וזו תנועה טבעית לגמרי.
+                    val d = dist(event.x, event.y)
+                    if (d > farDist) { farDist = d; curX = event.x; curY = event.y }
                     invalidate()
                 }
                 MotionEvent.ACTION_UP -> {
@@ -154,11 +170,13 @@ class FallPickerActivity : Activity() {
                     // נתונים שגויים, לא רק תסכול.
                     //
                     // נקודת ה-UP קיימת תמיד, ולכן היא המקור הנכון בכל מקרה.
-                    curX = event.x; curY = event.y
+                    val upDist = dist(event.x, event.y)
+                    if (upDist >= farDist) { curX = event.x; curY = event.y }
                     val picked = highlighted()
                     EventLog.log(
                         context, "FALL",
                         "picker_up;dx=${(curX - downX).toInt()};dy=${(curY - downY).toInt()};" +
+                            "moves=$moveCount;up_len=${upDist.toInt()};far_len=${farDist.toInt()};" +
                             "picked=${if (picked >= 0) RadialFallButton.CATEGORIES[picked] else "none"}"
                     )
                     touching = false

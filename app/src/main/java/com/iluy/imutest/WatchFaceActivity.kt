@@ -62,6 +62,27 @@ class WatchFaceActivity : Activity() {
     // --- מצב מחוות ה-✕ ---
     private var downX = 0f
     private var downY = 0f
+
+    /**
+     * הנקודה הרחוקה ביותר מנקודת הלחיצה **במהלך** המחווה, וכמה אירועי
+     * תנועה בכלל הגיעו.
+     *
+     * ⚠️ **נולד מ-12 דחיות רצופות עם `len=0` ואפס התגברויות שנרשמו.**
+     * אורך הקו נמדד מנקודת הלחיצה לנקודת ההרמה בלבד — ואם מסך המגע של
+     * השעון הזה מוסר ב-UP את הקואורדינטות האחרונות **שדווחו**, ולא
+     * דיווח אף תנועה באמצע, אז UP שווה ל-DOWN והאורך יוצא אפס תמיד.
+     *
+     * מדידה לפי הנקודה הרחוקה ביותר עובדת בכל אחד מהמצבים: אם יש אירועי
+     * תנועה — נשתמש בהם; אם יש רק UP תקין — הוא עצמו הרחוק ביותר.
+     *
+     * `moveCount` נרשם ללוג כדי להכריע סופית: **אם הוא אפס, אין מחוות
+     * על המכשיר הזה בכלל** — ואז כל ממשק שנשען על גרירה צריך להיזרק
+     * ולהיבנות מחדש עם כפתורים.
+     */
+    private var farX = 0f
+    private var farY = 0f
+    private var farDist = 0.0
+    private var moveCount = 0
     private var lastStrokeDirection = 0 // 1 = "\", -1 = "/", 0 = אין עדיין
     private var lastStrokeMs = 0L
     // נקודת-האמצע של הקו הקודם, לא נקודת-ההתחלה שלו — ראו ההסבר
@@ -207,10 +228,26 @@ class WatchFaceActivity : Activity() {
             MotionEvent.ACTION_DOWN -> {
                 downX = event.rawX
                 downY = event.rawY
+                farX = downX; farY = downY; farDist = 0.0
+                moveCount = 0
+            }
+            MotionEvent.ACTION_MOVE -> {
+                moveCount++
+                val d = Math.hypot(
+                    (event.rawX - downX).toDouble(), (event.rawY - downY).toDouble()
+                )
+                if (d > farDist) { farDist = d; farX = event.rawX; farY = event.rawY }
             }
             MotionEvent.ACTION_UP -> {
-                val dx = event.rawX - downX
-                val dy = event.rawY - downY
+                // ⚠️ הנקודה הרחוקה ביותר, ולא נקודת ההרמה. ראו הערת-השדה.
+                val upDist = Math.hypot(
+                    (event.rawX - downX).toDouble(), (event.rawY - downY).toDouble()
+                )
+                val endX = if (upDist >= farDist) event.rawX else farX
+                val endY = if (upDist >= farDist) event.rawY else farY
+
+                val dx = endX - downX
+                val dy = endY - downY
                 val length = Math.hypot(dx.toDouble(), dy.toDouble())
 
                 val root = window.decorView
@@ -234,7 +271,14 @@ class WatchFaceActivity : Activity() {
                 // דיווח שאי-אפשר לאבחן ממנו כלום.
                 val minLength = minSide * DebugConfig.X_GESTURE_MIN_STROKE_FRACTION
                 if (length < minLength) {
-                    logXReject("too_short", "len=${length.toInt()};need=${minLength.toInt()}")
+                    // ⚠️ `moves` הוא המספר שמכריע אם יש בכלל מחוות על
+                    // המכשיר הזה. אפס = מסך המגע לא מדווח תנועה, וכל
+                    // ממשק שנשען על גרירה חייב להיבנות מחדש.
+                    logXReject(
+                        "too_short",
+                        "len=${length.toInt()};need=${minLength.toInt()};" +
+                            "moves=$moveCount;up_len=${upDist.toInt()};far_len=${farDist.toInt()}"
+                    )
                     return
                 }
 
@@ -258,8 +302,8 @@ class WatchFaceActivity : Activity() {
                 // הקווים מתחילים בפינות מנוגדות, כך שהמרחק ביניהן הוא
                 // רוחב ה-✕ — וככל שצוירה מחווה גדולה ונקייה יותר, כך
                 // גדל הסיכוי שתידחה. האמצעים, לעומת זאת, מצטלבים.
-                val midX = (downX + event.rawX) / 2f
-                val midY = (downY + event.rawY) / 2f
+                val midX = (downX + endX) / 2f
+                val midY = (downY + endY) / 2f
                 val midDistance = Math.hypot(
                     (midX - lastStrokeMidX).toDouble(),
                     (midY - lastStrokeMidY).toDouble()
