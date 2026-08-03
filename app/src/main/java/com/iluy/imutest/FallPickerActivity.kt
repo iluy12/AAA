@@ -3,37 +3,53 @@ package com.iluy.imutest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
 import android.os.Bundle
+import android.view.Gravity
 import android.view.KeyEvent
-import android.view.MotionEvent
 import android.view.View
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
 
 /**
- * בחירת סוג נפילה — **מסך מלא**.
+ * בחירת סוג נפילה — **ארבעה כפתורים על מסך מלא**.
  *
- * ## ⚠️ למה זה מסך ולא כפתור בתוך רשימה
+ * ## ⚠️ למה לא גרירה, וזה נמדד ולא הוחלט
  *
- * הגרסה הראשונה הייתה תיבה בגובה 300 פיקסל בתוך רשימה נגללת, ונכשלה
- * בשלוש דרכים שכולן נובעות מאותה החלטה:
+ * המסך הזה היה בורר רדיאלי: מחזיקים במרכז וגוררים לכיוון. הוא נכשל,
+ * ולקח שלושה סבבים של תיקונים שגויים עד שהמדידה הכריעה.
  *
- * 1. **הגרירה לא עבדה בכלל.** ה-ScrollView שמסביב יירט את התנועה
- *    האנכית לפני שהיא הגיעה לכפתור — כלומר "ברית" ו"מחשבה", שנמצאות
- *    למעלה ולמטה, היו בלתי-נגישות לחלוטין.
- * 2. **הטקסט היה זעיר.** גדלים נכתבו בפיקסלים גולמיים; על מסך 480×480
- *    בצפיפות גבוהה זה מיקרוסקופי. הכל כאן מוכפל ב-`density`.
- * 3. **צפוף.** ארבע אפשרויות בתיבה נמוכה נדחסות זו לזו.
+ * מהלוג של 2026-08-03 בשעה 22:28, אחרי שהמסך כבר היה מסך-מלא אמיתי:
  *
- * מסך מלא פותר את שלושתן בבת אחת: אין מה שיירט, יש מקום, והמסך כולו
- * הוא אזור המגע.
+ * ```
+ * picker_down;at=176,246
+ * picker_up;moves=6;far_len=0;trace=[176,246 176,246 176,246 ...]
+ * ```
  *
- * ## המחווה
+ * **176,246 היא מרכז המסך** (368×448), כלומר לא קצה ולא אזור-מערכת. שש
+ * הודעות תנועה הגיעו, וכולן על אותה נקודה בדיוק.
  *
- * גרירה לכיוון = בחירה ודיווח מיידי. הרמת אצבע בלי גרירה = מסך אישור.
- * ⚠️ האסימטריה מכוונת: גרירה אי-אפשר לעשות בכיס, לחיצה כן — ולכן דווקא
- * המסלול הקצר מקבל את השער הנוסף.
+ * ובאותו מכשיר, משיכות שכן נרשמו היו באורך **308-384 פיקסלים על מסך
+ * ברוחב 368** — כלומר כמעט מקצה לקצה.
+ *
+ * > **מסך המגע מדווח תנועה רק במשיכות ענק. משיכה מהמרכז לבועה היא
+ * > כ-130 פיקסלים, והיא לא תירשם לעולם.**
+ *
+ * זו מגבלת חומרה, לא באג. שום תיקון בקוד לא יעזור לה.
+ *
+ * ⚠️ **ושתי ההשערות שלי לפניה היו שגויות, שתיהן:** שהדיגיטייזר לא מוסר
+ * MOVE בכלל (הוא כן, 6-16 הודעות), ושרבע מהמסך שייך למערכת (`view`
+ * שווה ל-`metrics` — הכל שלנו). כל אחת מהן הובילה לתיקון שלא יכול היה
+ * לעבוד.
+ *
+ * ## ומה שנבו תיאר, שנפתר מאליו
+ *
+ * *"מזהה לחיצה ארוכה אבל לא משיכה. צריך לעזוב ואז למשוך שוב."*
+ *
+ * זה נכון ובלתי-פתיר בגרירה: הלחיצה הארוכה יורה **בזמן שהאצבע עוד
+ * למטה**, המסך הזה נפתח, ואנדרואיד לא מוסר לו `ACTION_DOWN` על אצבע
+ * שכבר הייתה מונחת. עם כפתורים השאלה לא קיימת.
  */
 class FallPickerActivity : Activity() {
 
@@ -49,228 +65,102 @@ class FallPickerActivity : Activity() {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
         }
+
+        /**
+         * צבע לכל קטגוריה, מהחמור לקל.
+         *
+         * ⚠️ **בכוונה לא ארבעה אדומים.** מסך שכולו אדום ברגע של בושה
+         * הוא ענישה חזותית. הסולם עובר מאדום-אדמה לחום ולאפור-כחלחל,
+         * וקרי-לילה — שלא הייתה בו בחירה — מקבל את הגוון הרגוע ביותר.
+         */
+        private val COLOURS = listOf("#8C3B34", "#8A5A32", "#4A5A6E", "#3C4450")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AlertHelper.wakeScreen(this)
-        // ⚠️ מסך זמני, ולכן מותר. ראו את ההסבר ב-Immersive על מסך-השעון.
         Immersive.apply(this)
-        setContentView(PickerView(this))
+        EventLog.log(this, "FALL", "picker_shown")
+        setContentView(buildLayout())
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
-            Immersive.apply(this)
-            Immersive.logGeometry(this, "fall_picker")
+        if (hasFocus) Immersive.apply(this)
+    }
+
+    private fun buildLayout(): View {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#0A0A0B"))
+            setPadding(10, 8, 10, 8)
         }
+
+        root.addView(TextView(this).apply {
+            text = "מה קרה?"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#9A9A98"))
+            setPadding(0, 4, 0, 8)
+        })
+
+        // ⚠️ **הכפתורים חולקים את הגובה שנשאר בשווה.** גובה קבוע בפיקסלים
+        // היה נשבר על מסך אחר, והמסך הזה כבר עומד להתחלף (368×448 היום).
+        for ((i, label) in RadialFallButton.CATEGORIES.withIndex()) {
+            root.addView(Button(this).apply {
+                text = label
+                textSize = 19f
+                setTextColor(Color.WHITE)
+                setBackgroundColor(Color.parseColor(COLOURS[i]))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+                ).apply { setMargins(0, 4, 0, 4) }
+                setOnClickListener { report(label) }
+            })
+        }
+
+        // ✕ קטן. יציאה בלי לדווח חייבת להיות אפשרית, ולא צריכה להתחרות
+        // בגודל עם הדיווח עצמו.
+        root.addView(TextView(this).apply {
+            text = "✕"
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setTextColor(Color.parseColor("#6E6E6C"))
+            setPadding(0, 10, 0, 6)
+            setOnClickListener {
+                EventLog.log(this@FallPickerActivity, "FALL", "picker_cancelled")
+                finish()
+            }
+        })
+
+        return root
+    }
+
+    private fun report(category: String) {
+        EventLog.log(this, "FALL", "picker_choice;category=$category")
+        FallReport.record(this, category)
+        showAcknowledge()
+    }
+
+    /**
+     * הרגע עצמו: משפט אחד, ונסגר לבד.
+     *
+     * ⚠️ **מיד אחרי נפילה זה לא הזמן לדבר** — זה רגע של חרטה ובושה, ומסך
+     * שנשאר פתוח נקרא כתחקור. המשפט המעודד מגיע כעבור 5-15 דקות, מבנק
+     * אחר לגמרי.
+     */
+    private fun showAcknowledge() {
+        val text = Encouragements.fallAcknowledge()
+        setContentView(TextView(this).apply {
+            this.text = text
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setBackgroundColor(Color.parseColor("#0A0A0B"))
+            setPadding(26, 26, 26, 26)
+            postDelayed({ finish() }, 2_200L)
+        })
     }
 
     override fun onBackPressed() { finish() }
-
-    private inner class PickerView(context: Context) : View(context) {
-
-        private val d = resources.displayMetrics.density
-
-        /** כל הגדלים ביחידות מסך אמיתיות. ראו הערת-המחלקה. */
-        private val bubbleR = 46f * d
-        private val labelSize = 15f * d
-        private val titleSize = 17f * d
-        private val hintSize = 12f * d
-        /**
-         * ⚠️ 14 ולא 24. על מסך של 480×480 עם אצבע, גרירה של 24dp היא כמעט
-         * חמישית מהמסך — הרבה יותר ממה שנדרש כדי להביע כיוון. הסף הגבוה
-         * הוא חלק מהסיבה שהמחווה נכשלה בפועל.
-         */
-        private val dragThreshold = 14f * d
-
-        private var downX = 0f
-        private var downY = 0f
-        private var curX = 0f
-        private var curY = 0f
-        private var touching = false
-
-        /** ראו הערת-השדה המקבילה ב-WatchFaceActivity — אותו שורש. */
-        private var farDist = 0f
-        private var moveCount = 0
-
-        /**
-         * הקואורדינטות עצמן, ולא רק כמה אירועים הגיעו.
-         *
-         * ⚠️ **בלי זה אי-אפשר להבדיל בין שתי מסקנות הפוכות.** בלוג נרשם
-         * `moves=9` עם `far_len=0` — תשע הודעות תנועה בלי שום תזוזה. זה
-         * יכול להיות מסך מגע שמדווח מיקום קבוע, וזה יכול להיות פשוט אצבע
-         * שנחה במקום. הראשונה אומרת "לזרוק את כל המחוות מהמוצר", השנייה
-         * אומרת "לא קרה כלום". **הסקתי את הראשונה מראיה שלא מבחינה
-         * ביניהן**, ולכן כאן נרשמות הנקודות עצמן.
-         */
-        private val trace = StringBuilder()
-
-        private fun dist(x: Float, y: Float): Float {
-            val dx = x - downX
-            val dy = y - downY
-            return kotlin.math.sqrt(dx * dx + dy * dy)
-        }
-
-        private val bubblePaint = Paint(Paint.ANTI_ALIAS_FLAG)
-        private val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textAlign = Paint.Align.CENTER
-            textSize = labelSize
-            isFakeBoldText = true
-        }
-        private val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textAlign = Paint.Align.CENTER
-            textSize = titleSize
-            color = Color.WHITE
-        }
-        private val hintPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textAlign = Paint.Align.CENTER
-            textSize = hintSize
-            color = Color.parseColor("#9A9A9A")
-        }
-        private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#F2C14E")
-            strokeWidth = 3f * d
-        }
-
-        private fun positions(): List<Pair<Float, Float>> {
-            val pad = bubbleR + 6f * d
-            return listOf(
-                width / 2f to pad,                 // ברית
-                width - pad to height / 2f,        // עיניים
-                width / 2f to height - pad,        // מחשבה
-                pad to height / 2f                 // קרי לילה
-            )
-        }
-
-        private fun highlighted(): Int {
-            if (!touching) return -1
-            val dx = curX - downX
-            val dy = curY - downY
-            if (kotlin.math.sqrt(dx * dx + dy * dy) < dragThreshold) return -1
-            return if (kotlin.math.abs(dy) > kotlin.math.abs(dx)) {
-                if (dy < 0) 0 else 2
-            } else {
-                if (dx > 0) 1 else 3
-            }
-        }
-
-        override fun onTouchEvent(event: MotionEvent): Boolean {
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    downX = event.x; downY = event.y
-                    curX = downX; curY = downY
-                    farDist = 0f
-                    moveCount = 0
-                    trace.setLength(0)
-                    touching = true
-                    EventLog.log(
-                        context, "FALL", "picker_down;at=${downX.toInt()},${downY.toInt()}"
-                    )
-                    // ⚠️ חגורה ושלייקס: גם במסך מלא, אם מישהו יעטוף את זה
-                    // בעתיד במיכל גליל — הגרירה תישבר בשקט בדיוק כמו קודם.
-                    parent?.requestDisallowInterceptTouchEvent(true)
-                    invalidate()
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    moveCount++
-                    if (moveCount <= 10) {
-                        trace.append("${event.x.toInt()},${event.y.toInt()} ")
-                    }
-                    // ⚠️ **הרחוקה ביותר, לא האחרונה.** אצבע שחוזרת לאמצע
-                    // לפני ההרמה ביטלה את הבחירה, וזו תנועה טבעית לגמרי.
-                    val d = dist(event.x, event.y)
-                    if (d > farDist) { farDist = d; curX = event.x; curY = event.y }
-                    invalidate()
-                }
-                MotionEvent.ACTION_UP -> {
-                    // ⚠️ **הקואורדינטות נלקחות מ-UP עצמו ולא מה-MOVE האחרון.**
-                    //
-                    // זו הסיבה שנבו לא הצליח לגרור. הבחירה נקבעה מ-`curX/curY`
-                    // שמתעדכנים **רק ב-ACTION_MOVE** — ואם הדיגיטייזר של השעון
-                    // הזה לא מוסר MOVE (או מוסר מעט מדי), הערכים נשארים שווים
-                    // לנקודת הלחיצה, המרחק יוצא אפס, והמחווה תמיד נקראה
-                    // כ"לחיצה בלי גרירה".
-                    //
-                    // בלוג של 3.8: שלושה `confirm_shown` מול הצלחה אחת. כלומר
-                    // המחווה נכשלה ברוב הניסיונות, ובכל כישלון הדיווח נשמר
-                    // כ**ברית** — ברירת המחדל החמורה. המחווה השבורה ייצרה
-                    // נתונים שגויים, לא רק תסכול.
-                    //
-                    // נקודת ה-UP קיימת תמיד, ולכן היא המקור הנכון בכל מקרה.
-                    val upDist = dist(event.x, event.y)
-                    if (upDist >= farDist) { curX = event.x; curY = event.y }
-                    val picked = highlighted()
-                    EventLog.log(
-                        context, "FALL",
-                        "picker_up;dx=${(curX - downX).toInt()};dy=${(curY - downY).toInt()};" +
-                            "moves=$moveCount;up_len=${upDist.toInt()};far_len=${farDist.toInt()};" +
-                            "picked=${if (picked >= 0) RadialFallButton.CATEGORIES[picked] else "none"};" +
-                            "trace=[${trace.toString().trim()}]"
-                    )
-                    touching = false
-                    invalidate()
-                    if (picked >= 0) {
-                        FallReport.record(this@FallPickerActivity, RadialFallButton.CATEGORIES[picked])
-                        showAcknowledge()
-                    } else {
-                        FallConfirmActivity.launch(this@FallPickerActivity)
-                        finish()
-                    }
-                }
-                MotionEvent.ACTION_CANCEL -> {
-                    // ⚠️ **החשוד המרכזי בשלושת הניסיונות שנעלמו.** נבו תיאר
-                    // ארבע משיכות, ובלוג נרשמה רק אחת. אם המערכת חוטפת את
-                    // המחווה באמצע (מחוות-מערכת של השעון), היא נגמרת ב-CANCEL
-                    // ולא ב-UP — ואז אין `picker_up` בכלל, וזה נראה בדיוק
-                    // כמו "לא נגע במסך".
-                    EventLog.log(
-                        context, "FALL",
-                        "picker_cancel;moves=$moveCount;far_len=${farDist.toInt()};" +
-                            "trace=[${trace.toString().trim()}]"
-                    )
-                    touching = false
-                    invalidate()
-                }
-            }
-            return true
-        }
-
-        override fun onDraw(canvas: Canvas) {
-            canvas.drawColor(Color.parseColor("#141414"))
-            val cx = width / 2f
-            val cy = height / 2f
-            val hi = highlighted()
-
-            // קו מהאצבע לכיוון הנבחר — משוב מיידי שהמחווה נקלטה
-            if (touching && hi >= 0) {
-                val (bx, by) = positions()[hi]
-                canvas.drawLine(downX, downY, bx, by, linePaint)
-            }
-
-            for (i in RadialFallButton.CATEGORIES.indices) {
-                val (x, y) = positions()[i]
-                bubblePaint.color =
-                    if (i == hi) Color.parseColor("#F2C14E") else Color.parseColor("#3C3C3C")
-                canvas.drawCircle(x, y, bubbleR, bubblePaint)
-                labelPaint.color = if (i == hi) Color.BLACK else Color.WHITE
-                canvas.drawText(
-                    RadialFallButton.CATEGORIES[i], x,
-                    y + labelSize / 3f, labelPaint
-                )
-            }
-
-            if (!touching) {
-                canvas.drawText("נפלתי", cx, cy - 6f * d, titlePaint)
-                canvas.drawText("גרור לכיוון, או הרם לאישור", cx, cy + 16f * d, hintPaint)
-            }
-        }
-
-        private fun showAcknowledge() {
-            val text = Encouragements.fallAcknowledge()
-            android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_LONG).show()
-            postDelayed({ this@FallPickerActivity.finish() }, 900L)
-        }
-    }
 }

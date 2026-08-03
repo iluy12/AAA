@@ -53,6 +53,7 @@ class WatchFaceActivity : Activity() {
     private lateinit var timeText: TextView
     private lateinit var dateText: TextView
     private lateinit var feedbackText: TextView
+    private lateinit var bladeView: View
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
     private val dateFormat = SimpleDateFormat("EEEE, d בMMMM", Locale("he"))
@@ -139,28 +140,56 @@ class WatchFaceActivity : Activity() {
             )
         }
 
+        // ⚠️ **density=1.0 על המכשיר הזה** (נמדד: view=368x448). כלומר
+        // `textSize` ב-sp הוא פיקסלים ממש, והמסך צר — 44 היה גדול מדי
+        // ביחס לרוחב 368 ברגע שהתאריך העברי מצטרף.
         timeText = TextView(this).apply {
-            textSize = 44f
+            textSize = 54f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
+            // כסף מוברש: בהיר למעלה, כהה למטה. נצבע ב-onLayout כי לפני
+            // המדידה אין גובה שאפשר למתוח עליו מעבר.
+            includeFontPadding = false
         }
         dateText = TextView(this).apply {
-            textSize = 13f
-            setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+            textSize = 14f
+            setTextColor(Color.parseColor("#C9A961"))
             gravity = Gravity.CENTER
-            setPadding(0, 6, 0, 0)
+            letterSpacing = 0.06f
+            setPadding(0, 10, 0, 0)
         }
         feedbackText = TextView(this).apply {
-            textSize = 14f
-            setTextColor(ContextCompat.getColor(context, R.color.emerald_accent))
+            textSize = 13f
+            setTextColor(Color.parseColor("#E4E2DC"))
             gravity = Gravity.CENTER
-            setPadding(0, 18, 0, 0)
+            setPadding(18, 0, 18, 0)
             visibility = View.INVISIBLE
         }
 
         column.addView(timeText)
+
+        // קו זהב שנמוג בשני הקצוות. ⚠️ מצויר ולא תמונה — קובץ PNG על
+        // מסך 368 היה מטושטש, וזה קו של פיקסל אחד.
+        column.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(160, 1).apply { topMargin = 12 }
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(
+                    Color.TRANSPARENT, Color.parseColor("#8A6E32"),
+                    Color.parseColor("#C9A961"),
+                    Color.parseColor("#8A6E32"), Color.TRANSPARENT
+                )
+            )
+        })
+
         column.addView(dateText)
-        column.addView(feedbackText)
+
+        // ⚠️ **מקום שמור להודעות, גם כשאין הודעה.** בלי זה השעה קופצת
+        // למעלה ולמטה בכל פעם שנאמר משהו, וזה מרגיש שבור. הגובה קבוע
+        // והתוכן הוא שמתחלף — ראו showFeedback.
+        column.addView(feedbackText, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 46
+        ).apply { topMargin = 22 })
 
         // גרסה על מסך-השעון עצמו, לא רק במסך הראשי. נוסף אחרי שנתקעת
         // בלי דרך לדעת אם ההתקנה בכלל תפסה — שורת-גרסה שאפשר להגיע
@@ -176,6 +205,22 @@ class WatchFaceActivity : Activity() {
         }
 
         root.addView(column)
+
+        // ⚠️ **הלהב — מד המצב, ועיצוב הגיוני שמסתיר אותו.**
+        //
+        // פס מתכת דק לאורך הקצה. הוא נראה כמו קישוט של המסגרת, והוא
+        // מציין את המצב הנוכחי: כסף כהה (נייח) → כסף (נייד) → זהב
+        // (רמה א׳) → ענבר (רמה ב׳).
+        //
+        // ⚠️ **אין אדום באף מצב, וזה לא אסתטיקה.** טבעת אדומה על היד
+        // צועקת "משהו רע קורה" — גם למי שעונד אותה, וגם לכל מי שמסתכל.
+        // המוצר הזה עומד או נופל על כך שמי שמסתכל מהצד רואה שעון.
+        bladeView = View(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                3, FrameLayout.LayoutParams.MATCH_PARENT, Gravity.START
+            )
+        }
+        root.addView(bladeView)
 
         // דרך-מוצא לתפריט. חובה, לא נוחות: מסך-בית מחליף את הלאנצ'ר של
         // היצרן ואיתו כל דרכי-הניווט שלו, אז בלי זה אין גישה להגדרות,
@@ -531,7 +576,72 @@ class WatchFaceActivity : Activity() {
     private fun updateClock() {
         val now = Date()
         timeText.text = timeFormat.format(now)
-        dateText.text = dateFormat.format(now)
+
+        // ⚠️ **התאריך העברי הוא הראשי, והלועזי נספח אליו.** זה מה שנותן
+        // למסך את האופי — בלעדיו זה שעון גנרי עם עוד שורת טקסט. אם הלוח
+        // העברי לא זמין מסיבה כלשהי, נשארים עם הלועזי בלבד ולא עם כלום.
+        val hebrew = HebrewDate.format(now)
+        dateText.text = if (hebrew.isNotBlank()) hebrew else dateFormat.format(now)
+
+        paintTimeMetal()
+        paintBlade()
+    }
+
+    /**
+     * כסף מוברש על טקסט השעה: בהיר למעלה, כהה למטה.
+     *
+     * ⚠️ **נצבע בכל עדכון ולא פעם אחת.** ה-shader נמתח על גובה הטקסט,
+     * וגובה זה לא ידוע לפני שה-view נמדד. צביעה ב-onCreate הייתה נותנת
+     * מעבר על גובה אפס — כלומר טקסט בצבע אחיד, בלי שום סימן לתקלה.
+     */
+    private fun paintTimeMetal() {
+        val h = timeText.textSize
+        if (h <= 0f) return
+        timeText.paint.shader = android.graphics.LinearGradient(
+            0f, 0f, 0f, h,
+            intArrayOf(
+                Color.parseColor("#FFFFFF"),
+                Color.parseColor("#C6C6CC"),
+                Color.parseColor("#7E7E86")
+            ),
+            floatArrayOf(0f, 0.5f, 1f),
+            android.graphics.Shader.TileMode.CLAMP
+        )
+        timeText.invalidate()
+    }
+
+    /**
+     * נייד או נייח, מהרשומה האחרונה שנאספה.
+     *
+     * ⚠️ **קורא את הנתון הקיים ולא רושם חיישן משלו.** מסך-השעון מצויר
+     * כל דקה; רישום מאזין-תאוצה כאן היה מדליק חיישן שוב ושוב בשביל
+     * קישוט, וזו בדיוק ההוצאה שהמוצר לא יכול להרשות לעצמו.
+     *
+     * אותו סף כמו בשער `moving` שבמנוע הציון — שתי דקות בלי צעד — כדי
+     * שמה שהמשתמש רואה יתאר את מה שהמערכת באמת חושבת.
+     */
+    private fun isMoving(): Boolean {
+        val last = SampleStore.recent(this, 1).lastOrNull() ?: return false
+        return last.stillMs in 0 until 2 * 60 * 1000L
+    }
+
+    /** צובע את הלהב לפי המצב הנוכחי. ראו את ההערה ליד [bladeView]. */
+    private fun paintBlade() {
+        if (!::bladeView.isInitialized) return
+        val level = Escalation.levelNow(this)
+        val colours = when {
+            level >= Escalation.Level.RISK_B ->
+                intArrayOf(0xFFE0913C.toInt(), 0xFFF2C46A.toInt(), 0xFFE0913C.toInt())
+            level >= Escalation.Level.RISK_A ->
+                intArrayOf(0xFF8A6E32.toInt(), 0xFFF0D89B.toInt(), 0xFF8A6E32.toInt())
+            isMoving() ->
+                intArrayOf(0xFF6E6E76.toInt(), 0xFFA9A9B2.toInt(), 0xFF6E6E76.toInt())
+            else ->
+                intArrayOf(0xFF2A2A2E.toInt(), 0xFF4A4A50.toInt(), 0xFF2A2A2E.toInt())
+        }
+        bladeView.background = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM, colours
+        )
     }
 
     override fun onResume() {
