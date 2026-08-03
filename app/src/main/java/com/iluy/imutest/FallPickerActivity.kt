@@ -68,7 +68,12 @@ class FallPickerActivity : Activity() {
         private val labelSize = 15f * d
         private val titleSize = 17f * d
         private val hintSize = 12f * d
-        private val dragThreshold = 24f * d
+        /**
+         * ⚠️ 14 ולא 24. על מסך של 480×480 עם אצבע, גרירה של 24dp היא כמעט
+         * חמישית מהמסך — הרבה יותר ממה שנדרש כדי להביע כיוון. הסף הגבוה
+         * הוא חלק מהסיבה שהמחווה נכשלה בפועל.
+         */
+        private val dragThreshold = 14f * d
 
         private var downX = 0f
         private var downY = 0f
@@ -135,7 +140,27 @@ class FallPickerActivity : Activity() {
                     invalidate()
                 }
                 MotionEvent.ACTION_UP -> {
+                    // ⚠️ **הקואורדינטות נלקחות מ-UP עצמו ולא מה-MOVE האחרון.**
+                    //
+                    // זו הסיבה שנבו לא הצליח לגרור. הבחירה נקבעה מ-`curX/curY`
+                    // שמתעדכנים **רק ב-ACTION_MOVE** — ואם הדיגיטייזר של השעון
+                    // הזה לא מוסר MOVE (או מוסר מעט מדי), הערכים נשארים שווים
+                    // לנקודת הלחיצה, המרחק יוצא אפס, והמחווה תמיד נקראה
+                    // כ"לחיצה בלי גרירה".
+                    //
+                    // בלוג של 3.8: שלושה `confirm_shown` מול הצלחה אחת. כלומר
+                    // המחווה נכשלה ברוב הניסיונות, ובכל כישלון הדיווח נשמר
+                    // כ**ברית** — ברירת המחדל החמורה. המחווה השבורה ייצרה
+                    // נתונים שגויים, לא רק תסכול.
+                    //
+                    // נקודת ה-UP קיימת תמיד, ולכן היא המקור הנכון בכל מקרה.
+                    curX = event.x; curY = event.y
                     val picked = highlighted()
+                    EventLog.log(
+                        context, "FALL",
+                        "picker_up;dx=${(curX - downX).toInt()};dy=${(curY - downY).toInt()};" +
+                            "picked=${if (picked >= 0) RadialFallButton.CATEGORIES[picked] else "none"}"
+                    )
                     touching = false
                     invalidate()
                     if (picked >= 0) {

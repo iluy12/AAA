@@ -24,6 +24,9 @@ object CalendarStore {
     private const val PREFS_NAME = "iluy_calendar"
     private val dayFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
+    /** שעת הדיווח, כדי שאפשר יהיה להבחין בין שתי נפילות באותו יום. */
+    private val timeFormat = SimpleDateFormat("HH:mm", Locale.US)
+
     /** יום בלוח. אותו יום יכול להכיל גם התגברויות וגם נפילה. */
     data class Day(
         val date: String,
@@ -49,9 +52,60 @@ object CalendarStore {
         return next
     }
 
+    /**
+     * ⚠️ **הלוח שמר קטגוריה אחת ליום, וזה מחק דיווחים.**
+     *
+     * ב-3.8 נבו דיווח "מחשבה" ב-16:15 ו"ברית" ב-16:27, ובלוח ראה **רק
+     * ברית** — כי הדיווח השני דרס את הראשון. הוא הסיק מזה שהמחווה שמרה
+     * ברית בטעות, וזו הסקה סבירה לגמרי מהמסך שהוא ראה.
+     *
+     * שני אירועים ביום הם **הנתון החשוב ביותר** שיש ליום כזה, ולא משהו
+     * שאפשר לקפל למחרוזת אחת.
+     *
+     * ⚠️ הפורמט שומר גם `cancelled` — נבו ביקש שיהיה אפשר לבטל דיווח
+     * שגוי, ומחיקה הייתה מסתירה שהיה כאן דיווח בכלל.
+     */
     fun recordFall(context: Context, category: String) {
         val key = todayKey()
-        prefs(context).edit().putString(fallKey(key), category).apply()
+        val entries = fallsOn(context, key) + Entry(timeFormat.format(Date()), category, false)
+        writeEntries(context, key, entries)
+    }
+
+    data class Entry(val time: String, val category: String, val cancelled: Boolean)
+
+    fun fallsOn(context: Context, dateKey: String): List<Entry> {
+        val raw = prefs(context).getString(fallKey(dateKey), null) ?: return emptyList()
+        // ⚠️ תאימות לאחור: פורמט ישן היה קטגוריה בודדת בלי מפרידים.
+        if (!raw.contains('|')) return listOf(Entry("", raw, false))
+        return raw.split(";").mapNotNull {
+            val p = it.split("|")
+            if (p.size < 3) null else Entry(p[0], p[1], p[2] == "1")
+        }
+    }
+
+    private fun writeEntries(context: Context, dateKey: String, entries: List<Entry>) {
+        prefs(context).edit().putString(
+            fallKey(dateKey),
+            entries.joinToString(";") { "${it.time}|${it.category}|${if (it.cancelled) 1 else 0}" }
+        ).apply()
+    }
+
+    /**
+     * מבטל או מחזיר דיווח נפילה.
+     *
+     * ⚠️ **מסומן ולא נמחק.** דיווח מבוטל אינו נספר בשום חישוב, אבל הוא
+     * נשאר גלוי — כדי שנבו יוכל לראות בעצמו כמה פעמים המחווה טעתה, וכדי
+     * שביטול בטעות יהיה הפיך.
+     */
+    fun setFallCancelled(context: Context, dateKey: String, index: Int, cancelled: Boolean) {
+        val entries = fallsOn(context, dateKey).toMutableList()
+        if (index !in entries.indices) return
+        entries[index] = entries[index].copy(cancelled = cancelled)
+        writeEntries(context, dateKey, entries)
+        EventLog.log(
+            context, "FALL",
+            "cancel_toggled;date=$dateKey;i=$index;cat=${entries[index].category};on=$cancelled"
+        )
     }
 
     // ---------- קריאה ----------
@@ -61,8 +115,17 @@ object CalendarStore {
     fun overcomingsOn(context: Context, dateKey: String): Int =
         prefs(context).getInt(overcomingKey(dateKey), 0)
 
+    /**
+     * סיכום היום לצורך חישובים: **החמורה מבין הנפילות שלא בוטלו**, או
+     * null אם אין כאלה.
+     *
+     * ⚠️ החמורה ולא האחרונה. יום שהיו בו מחשבה וברית הוא יום של ברית.
+     */
     fun fallOn(context: Context, dateKey: String): String? =
-        prefs(context).getString(fallKey(dateKey), null)
+        fallsOn(context, dateKey)
+            .filter { !it.cancelled }
+            .maxByOrNull { FallSeverity.fromLabel(it.category).weight }
+            ?.category
 
     /**
      * הימים האחרונים, מהיום אחורה. נקרא לפי חשבון-תאריכים ולא לפי

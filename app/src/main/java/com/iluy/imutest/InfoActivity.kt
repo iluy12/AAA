@@ -81,9 +81,16 @@ class InfoActivity : Activity() {
      * מנצח". זו הייתה החלטה מפורשת: להתגברויות של יום שהיה בו גם נופל
      * יש ערך בפני עצמן, והעלמתן הייתה מוחקת בדיוק את המאמץ שכן נעשה.
      */
-    private fun renderCalendar(container: LinearLayout) {
-        val days = CalendarStore.recentDays(this, 14)
+    /**
+     * שורות הימים בלבד, בלי הכותרת.
+     *
+     * ⚠️ מוחזק בנפרד כדי שביטול נפילה יוכל לצייר מחדש **רק אותן**. בלי
+     * זה הייתי צריך לבנות את כל המסך מחדש, ואז המיקום בגלילה נאבד בדיוק
+     * כשהמשתמש מתקן משהו.
+     */
+    private var daysContainer: LinearLayout? = null
 
+    private fun renderCalendar(container: LinearLayout) {
         container.addView(TextView(this).apply {
             text = "14 הימים האחרונים"
             textSize = 13f
@@ -91,6 +98,22 @@ class InfoActivity : Activity() {
             setTextColor(ContextCompat.getColor(context, R.color.text_secondary))
             setPadding(0, 0, 0, 10)
         })
+
+        val days = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        daysContainer = days
+        container.addView(days)
+        renderDays()
+    }
+
+    private fun renderDays() {
+        val container = daysContainer ?: return
+        container.removeAllViews()
+        val days = CalendarStore.recentDays(this, 14)
 
         if (days.all { it.isEmpty }) {
             container.addView(TextView(this).apply {
@@ -106,7 +129,11 @@ class InfoActivity : Activity() {
         val parseFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
         for (day in days) {
-            if (day.isEmpty) continue
+            // ⚠️ **לא `day.isEmpty`.** הסיכום היומי סופר רק נפילות שלא
+            // בוטלו, ולכן יום שכל נפילותיו בוטלו היה נעלם מהמסך — יחד עם
+            // האפשרות לבטל את הביטול. שורה שהמשתמש נגע בה חייבת להישאר.
+            val entries = CalendarStore.fallsOn(this, day.date)
+            if (day.overcomings == 0 && entries.isEmpty()) continue
 
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -133,8 +160,31 @@ class InfoActivity : Activity() {
             if (day.overcomings > 0) {
                 row.addView(chip("${day.overcomings} התגברויות", R.color.emerald_primary))
             }
-            if (day.fallCategory != null) {
-                row.addView(chip(day.fallCategory, R.color.danger))
+            // ⚠️ **כל נפילה בנפרד, ולא סיכום אחד ליום.** קודם הוצגה קטגוריה
+            // אחת, ולכן דיווח שני באותו יום נראה כאילו הוא **החליף** את
+            // הראשון — וזה מה שגרם לנבו להסיק שהמחווה שומרת ברית בטעות.
+            //
+            // ולחיצה על נפילה מבטלת אותה. הוא ביקש את זה במפורש: דיווח
+            // שנרשם בטעות חייב להיות ניתן לתיקון, אחרת כל טעות במחווה
+            // הופכת לנתון קבוע שהמערכת תלמד ממנו.
+            for ((i, entry) in entries.withIndex()) {
+                val chipText = listOfNotNull(
+                    entry.time.takeIf { it.isNotBlank() },
+                    entry.category
+                ).joinToString(" ")
+                row.addView(
+                    chip(
+                        if (entry.cancelled) "$chipText ✗בוטל" else chipText,
+                        if (entry.cancelled) R.color.text_tertiary else R.color.danger
+                    ).apply {
+                        setOnClickListener {
+                            CalendarStore.setFallCancelled(
+                                this@InfoActivity, day.date, i, !entry.cancelled
+                            )
+                            renderDays()
+                        }
+                    }
+                )
             }
 
             container.addView(row)
