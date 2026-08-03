@@ -169,8 +169,8 @@ class WatchFaceActivity : Activity() {
         // הראשי, הלועזי נספח.
         hebDay = bigDate("#C9A961")
         hebMonth = smallDate("#8A6E32")
-        gregDay = bigDate("#C6C6CC")
-        gregMonth = smallDate("#6E6E76")
+        gregDay = bigDate("#C9A961")
+        gregMonth = smallDate("#8A6E32")
         feedbackText = TextView(this).apply {
             textSize = 13f
             setTextColor(Color.parseColor("#E4E2DC"))
@@ -209,8 +209,8 @@ class WatchFaceActivity : Activity() {
         // אליה רק דרך מסך אחר לא עוזרת כשהמסך ההוא חסום.
         if (DebugConfig.DEBUG_TAG_ENABLED) {
             column.addView(TextView(this).apply {
-                text = "build ${BuildConfig.VERSION_CODE} · ${BuildConfig.BUILD_TIMESTAMP}"
-                textSize = 9f
+                text = "${BuildConfig.VERSION_CODE}"
+                textSize = 13f
                 gravity = Gravity.CENTER
                 setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
                 setPadding(0, 14, 0, 0)
@@ -239,12 +239,16 @@ class WatchFaceActivity : Activity() {
         // היצרן ואיתו כל דרכי-הניווט שלו, אז בלי זה אין גישה להגדרות,
         // אין דרך להסיר את האפליקציה, והמכשיר בפועל נעול על מסך אחד.
         // דיסקרטי בכוונה — מי שמסתכל רואה שעון.
+        // ⚠️ **☰ ולא ⋯, וגדול פי שניים.** נבו: *"בקושי רואים את זה.
+        // הפונט בטלפון מאוד קטן."* והסיבה נמדדה — `density = 1.0`
+        // על המכשיר הזה, כלומר כל גודל שנכתב בקוד הוא פיקסלים ממש.
+        // 18 על מסך ברוחב 368 זה כתם.
         val menuDot = TextView(this).apply {
-            text = "⋯"
-            textSize = 18f
-            setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
+            text = "☰"
+            textSize = 30f
+            setTextColor(Color.parseColor("#8A6E32"))
             gravity = Gravity.CENTER
-            setPadding(24, 8, 24, 8)
+            setPadding(30, 10, 30, 10)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
