@@ -250,15 +250,16 @@ class MainActivity : Activity() {
             // ל-500 שורות ול-60KB — שעות בודדות — והניתוח שמצב-הצל קיים
             // בשבילו דורש שבועות.
             container.addView(secondaryButton("ייצא נתונים ← קבל כתובת") {
+                logDisplay?.apply {
+                    text = "מייצא…"
+                    textSize = 14f
+                    visibility = android.view.View.VISIBLE
+                }
                 Thread {
                     val body = SampleStore.exportAll(this)
                     val result = LogUploader.uploadText(body)
-                    runOnUiThread {
-                        logDisplay?.apply {
-                            text = "${SampleStore.count(this@MainActivity)} רשומות\n\n$result"
-                            visibility = android.view.View.VISIBLE
-                        }
-                    }
+                    val n = SampleStore.count(this)
+                    runOnUiThread { showUploadResult(result, "$n רשומות") }
                 }.start()
             })
             // ⚠️ **זה הכפתור הנכון אחרי שינוי בהגדרת "מנוחה", לא זה שמתחתיו.**
@@ -427,15 +428,28 @@ class MainActivity : Activity() {
         display.visibility = android.view.View.VISIBLE
 
         LogUploader.upload(this) { result ->
-            // הכתובת מוצגת גדולה ובמונחה — היא נועדה להיקרא ולהיאמר,
-            // ותו אחד שגוי הופך אותה לחסרת-ערך. אות אחת שהועתקה לא נכון
-            // כבר עלתה לנו סבב.
-            val slug = result.substringAfterLast('/')
-            display.text = if (result.startsWith("http")) "$slug\n\n$result" else result
-            display.textSize = if (result.startsWith("http")) 22f else 14f
-            display.setTextColor(android.graphics.Color.BLACK)
+            showUploadResult(result)
             EventLog.log(this, "INFO", "log_uploaded;result=$result")
         }
+    }
+
+    /**
+     * מציג קוד-העלאה גדול וברור.
+     *
+     * ⚠️ **משותף לשליחת הלוג ולייצוא הנתונים, ולא משוכפל.** הייצוא הציג
+     * את הקוד בגודל 10 — הגודל של טקסט-עזר — כי הוא כתב ישירות ל-TextView
+     * במקום לעבור כאן. הקוד נועד **להיקרא בקול ולהיאמר**, ותו אחד שגוי
+     * הופך אותו לחסר-ערך. אות שהועתקה לא נכון כבר עלתה לנו סבב שלם.
+     */
+    private fun showUploadResult(result: String, prefix: String = "") {
+        val display = logDisplay ?: return
+        val ok = result.startsWith("http")
+        val slug = result.substringAfterLast('/')
+        display.text = (if (prefix.isEmpty()) "" else "$prefix\n\n") +
+            if (ok) "$slug\n\n$result" else result
+        display.textSize = if (ok) 22f else 14f
+        display.setTextColor(android.graphics.Color.BLACK)
+        display.visibility = android.view.View.VISIBLE
     }
 
     private fun clearLog() {

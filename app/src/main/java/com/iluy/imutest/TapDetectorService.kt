@@ -60,6 +60,17 @@ class TapDetectorService : Service(), SensorEventListener {
     private var stepSensor: Sensor? = null
     private var stepCountTotal = -1L
     private var stepCountAtWindowStart = -1L
+
+    /**
+     * ⚠️ **מונה נפרד לפרץ, ולא שיתוף עם [stepCountAtWindowStart].**
+     *
+     * הרשומה השמורה השתמשה באותו משתנה שסיכום-הלוג שנרשם כל דקה מאפס.
+     * כלומר `steps` ברשומה מדד "צעדים מאז הסיכום האחרון" ולא "צעדים בפרץ",
+     * והוא יצא נמוך מדי — לפעמים אפס בזמן הליכה ממש. וזה מסוכן במיוחד
+     * עכשיו, כי האות `motion_no_steps` נשען בדיוק על `steps == 0`: הליכה
+     * שנספרה כאפס צעדים הייתה נראית לו כתנועה עדינה בלי הסבר.
+     */
+    private var stepCountAtBurstStart = -1L
     private var lastStepElapsedMs: Long? = null
 
     private var isListening = false
@@ -468,9 +479,26 @@ class TapDetectorService : Service(), SensorEventListener {
                 // נשמר כ-Long למרות שהחיישן מוסר float: מעל ~16.7 מיליון
                 // ל-float אין דיוק שלם, וזה גם מה שקורה כשמכשיר לא מאותחל
                 // חודשים. ההמרה נעשית פעם אחת כאן.
-                stepCountTotal = (event.values.getOrNull(0) ?: 0f).toLong()
-                if (stepCountAtWindowStart < 0) stepCountAtWindowStart = stepCountTotal
-                lastStepElapsedMs = SystemClock.elapsedRealtime()
+                val total = (event.values.getOrNull(0) ?: 0f).toLong()
+                if (stepCountAtWindowStart < 0) stepCountAtWindowStart = total
+                if (stepCountAtBurstStart < 0) stepCountAtBurstStart = total
+
+                // ⚠️ **רק כשהמונה באמת עלה — וזה היה הבאג שהעוור את המערכת.**
+                //
+                // ההנחה שנרשמה כאן הייתה שמונה-הצעדים הוא on-change ולכן
+                // "שתיקתו היא האות". בייצוא של 2026-08-03 התברר שזה לא נכון
+                // על הדרייבר הזה: הוא מוסר את אותו ערך מצטבר שוב ושוב, ולכן
+                // `lastStepElapsedMs` התאפס כל הזמן.
+                //
+                // התוצאה בנתונים: **still_ms היה 0 בכל 49 הרשומות של אותו
+                // יום, עם steps=0.** כלומר "אף צעד" ו"זז ברגע זה" בו-זמנית —
+                // סתירה שהיא עצמה ההוכחה.
+                //
+                // ומה שזה עשה: שער ה-`moving` חוסם כל רשומה שבה still_ms
+                // קטן משתי דקות, ולכן **המערכת הייתה עיוורת יום שלם**. גם
+                // הבסיס לא למד כלום, כי מנוחה דורשת חמש דקות שקט.
+                if (total > stepCountTotal) lastStepElapsedMs = SystemClock.elapsedRealtime()
+                stepCountTotal = total
             }
             Sensor.TYPE_HEART_RATE -> {
                 val raw = event.values.getOrNull(0) ?: 0f
@@ -579,6 +607,7 @@ class TapDetectorService : Service(), SensorEventListener {
         burstFirstHalfSum = 0; burstFirstHalfN = 0
         burstSecondHalfSum = 0; burstSecondHalfN = 0
         burstStartElapsedMs = SystemClock.elapsedRealtime()
+        stepCountAtBurstStart = stepCountTotal
 
         val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
         burstWakeLock = pm?.newWakeLock(
@@ -658,8 +687,8 @@ class TapDetectorService : Service(), SensorEventListener {
             bpm = if (burstSampleCount > 0) (hrSmoother.current() ?: -1) else -1,
             samples = burstSampleCount,
             firstSampleMs = firstMs,
-            steps = if (stepCountAtWindowStart < 0) 0
-                else (stepCountTotal - stepCountAtWindowStart).toInt(),
+            steps = if (stepCountAtBurstStart < 0) 0
+                else (stepCountTotal - stepCountAtBurstStart).toInt(),
             stillMs = lastStepElapsedMs?.let { SystemClock.elapsedRealtime() - it } ?: -1L,
             battery = batteryPercent(),
             noContact = burstNoContactCount,
