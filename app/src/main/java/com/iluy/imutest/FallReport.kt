@@ -275,7 +275,9 @@ object FallReport {
             // "כן" מרימה שיחה למלווה ו"לא" עונה "אם צריך אני כאן". שאלה בלי
             // כפתורים היא רק עוד טקסט שנעלם, וזו בדיוק ההצעה שלא נענית.
             val target = if (line.isQuestion) {
-                AskActivity.intentFor(context, line.text, "אחרי נפילה")
+                // ⚠️ מעביר את ה-Line כולו ולא רק את הטקסט — אחרת הפעולה
+                // שהשאלה מבטיחה נעלמת ו"כן" חוזר לחייג תמיד.
+                AskActivity.intentFor(context, line, "אחרי נפילה")
             } else if (level >= Escalation.Level.RISK_A) {
                 // המפתח חייב להיות EXTRA_SOURCE ולא "source" — המסך קורא
                 // ממנו, ומחרוזת אחרת הייתה נותנת "לא ידוע" בלוג.

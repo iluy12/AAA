@@ -95,6 +95,25 @@
             android:exported="false"
             android:label="@string/app_name" />
 
+        <!--
+          שני הכלים שהתשובה "כן" מובילה אליהם. showWhenLocked/turnScreenOn
+          כמו במסכי ההתערבות האחרים: הם נפתחים מהודעה, ומסך כבוי היה הופך
+          אותם לכפתור שלא מוביל לשום מקום.
+        -->
+        <activity
+            android:name=".RecordingActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
+        <activity
+            android:name=".VideoActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
         <activity
             android:name=".PlaceholderActivity"
             android:exported="false"

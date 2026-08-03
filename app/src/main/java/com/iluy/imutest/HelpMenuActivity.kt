@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
-import android.media.MediaPlayer
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -39,7 +38,6 @@ class HelpMenuActivity : Activity() {
     }
 
     private lateinit var source: String
-    private var player: MediaPlayer? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,17 +85,18 @@ class HelpMenuActivity : Activity() {
             )
         })
 
+        // ⚠️ שני אלה היו placeholder עד היום, והם הכלים שנבו ביקש שהמערכת
+        // תשתמש בהם הרבה יותר. עכשיו הם מסכים אמיתיים — ואותם מסכים בדיוק
+        // שהתשובה "כן" בהודעות מובילה אליהם, כדי שלא ייווצרו שני מסלולים
+        // שיכולים להיפרד.
         container.addView(menuButton("תקשיב לעצמך") {
             EventLog.log(this, "HELP_TOOL", "listen_to_yourself;source=$source")
-            playPersonalRecording()
+            RecordingActivity.launch(this, source)
         })
 
         container.addView(menuButton("סרטון חיזוק") {
             EventLog.log(this, "HELP_TOOL", "encouragement_video;source=$source")
-            PlaceholderActivity.launch(
-                this, title = "סרטון חיזוק",
-                message = "כאן יופיע סרטון חיזוק (placeholder ל-v1)."
-            )
+            VideoActivity.launch(this, source)
         })
 
         container.addView(menuButton("עצות") {
@@ -128,32 +127,11 @@ class HelpMenuActivity : Activity() {
         return scroll
     }
 
-    private fun playPersonalRecording() {
-        val path = LocalStore.getRecordingPath(this)
-        if (path.isNullOrBlank() || !java.io.File(path).exists()) {
-            PlaceholderActivity.launch(
-                this, title = "תקשיב לעצמך",
-                message = "עדיין לא הקלטת הודעה אישית. אפשר להוסיף אחת דרך השאלון."
-            )
-            return
-        }
-        try {
-            player?.release()
-            player = MediaPlayer().apply {
-                setDataSource(path)
-                prepare()
-                start()
-            }
-            android.widget.Toast.makeText(this, "מנגן את ההקלטה שלך…", android.widget.Toast.LENGTH_SHORT).show()
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(this, "לא הצלחתי לנגן את ההקלטה", android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    override fun onDestroy() {
-        player?.release()
-        super.onDestroy()
-    }
+    // ⚠️ **`playPersonalRecording` נמחק ולא הושאר "ליתר ביטחון".** הוא
+    // ניגן את אותה הקלטה בקוד משלו, עם הודעת-שגיאה משלו ומצב-ריק משלו.
+    // שני מסלולים לאותו דבר נפרדים בשקט ברגע שאחד מהם משתנה — וזה בדיוק
+    // מה שכבר קרה כאן פעם, כששכבת-הגנה נעלמה בלי שאיש שם לב.
+    // RecordingActivity הוא הבעלים היחיד.
 
     override fun onRequestPermissionsResult(
         requestCode: Int, permissions: Array<out String>, grantResults: IntArray

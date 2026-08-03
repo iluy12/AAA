@@ -36,6 +36,20 @@ import java.util.Calendar
  */
 object ReportReminder {
 
+    /**
+     * ⚠️ **כבוי. נבו ביקש לבטל אותה ב-3.8: "הכל טוב עם ה-✕".**
+     *
+     * היא נבנתה כניסוי — לוודא שכל סימון ✕ נרשם ושלא נרשם סימון שלא
+     * נעשה. הניסוי הסתיים, המחווה עובדת, ותזכורת שעתית שאין לה עוד
+     * תפקיד היא בדיוק הרעש שהמוצר הזה נבנה כדי לא לייצר: **הסיכוי
+     * להגיב להתראה יורד בכ-30% על כל תזכורת חוזרת.**
+     *
+     * ⚠️ הקוד נשאר ולא נמחק — התזכורת אמורה לחזור בגרסה אחרת, **לפי
+     * שתיקה בפועל ולא לפי שעון**. זה בנק 7 בקובץ הטקסטים ("שתק הרבה
+     * זמן"), והוא עדיין מתוכנן.
+     */
+    private const val ENABLED = false
+
     /** מחוץ לטווח הזה לא מזכירים — אין טעם להעיר אותו ב-04:00. */
     private const val FIRST_HOUR = 10
     private const val LAST_HOUR = 23
@@ -50,6 +64,21 @@ object ReportReminder {
      */
     fun schedule(context: Context) {
         val am = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        if (!ENABLED) {
+            // ⚠️ **מבטלים אזעקה שכבר נקבעה, ולא רק נמנעים מלקבוע חדשה.**
+            // מכשיר שרץ עם הגרסה הקודמת נושא אזעקה חיה; בלי הביטול היא
+            // הייתה ממשיכה לירות אחרי העדכון, וזה נראה בדיוק כמו שהכיבוי
+            // לא עבד.
+            am.cancel(
+                PendingIntent.getBroadcast(
+                    context, REQUEST_CODE,
+                    Intent(context, Receiver::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                )
+            )
+            EventLog.log(context, "INFO", "report_reminder_disabled")
+            return
+        }
         val next = nextFireTimeMs()
         val pi = PendingIntent.getBroadcast(
             context, REQUEST_CODE,
@@ -93,6 +122,12 @@ object ReportReminder {
             // ⚠️ הרישום קודם לכל השאר. בלעדיו אין למה להשוות את הסימונים,
             // וזו כל מטרת הניסוי.
             EventLog.log(context, "INFO", "report_reminder_fired;elapsed=${SystemClock.elapsedRealtime()}")
+            // ⚠️ בדיקה גם כאן: אזעקה שכבר הייתה בתור על גרסה קודמת יכולה
+            // עוד לירות פעם אחת אחרי העדכון, וההודעה היא מה שנבו רואה.
+            if (!ENABLED) {
+                EventLog.log(context, "INFO", "report_reminder_suppressed")
+                return
+            }
             notify(context)
             // מיד מתזמנים את הבאה — setExactAndAllowWhileIdle הוא חד-פעמי.
             schedule(context)

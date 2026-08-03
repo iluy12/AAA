@@ -41,12 +41,23 @@ class AskActivity : Activity() {
     companion object {
         private const val EXTRA_QUESTION = "question"
         private const val EXTRA_SOURCE = "source"
+        private const val EXTRA_ANSWER = "answer_action"
 
-        fun intentFor(context: Context, question: String, source: String): Intent =
+        fun intentFor(
+            context: Context,
+            question: String,
+            source: String,
+            onYes: Encouragements.Answer = Encouragements.Answer.CALL
+        ): Intent =
             Intent(context, AskActivity::class.java)
                 .putExtra(EXTRA_QUESTION, question)
                 .putExtra(EXTRA_SOURCE, source)
+                .putExtra(EXTRA_ANSWER, onYes.name)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+
+        /** נוחות: מסך שאלה ישירות מ-[Encouragements.Line]. */
+        fun intentFor(context: Context, line: Encouragements.Line, source: String): Intent =
+            intentFor(context, line.text, source, line.onYes)
     }
 
     private var source: String = "לא ידוע"
@@ -75,9 +86,25 @@ class AskActivity : Activity() {
             setPadding(0, 0, 0, 28)
         })
 
-        root.addView(answerButton("כן", primary = true) {
-            EventLog.log(this, "ASK_RESULT", "answer=yes;source=$source")
-            CallHelper.startCall(this, source = "$source ← כן")
+        // ⚠️ **"כן" עושה את מה שהשאלה שאלה, ולא תמיד מחייג.** ראו
+        // Encouragements.Answer — קודם כל "כן" הרים טלפון למלווה, כולל
+        // שאלות על סרטון והקלטה.
+        val action = runCatching {
+            Encouragements.Answer.valueOf(
+                intent.getStringExtra(EXTRA_ANSWER) ?: Encouragements.Answer.CALL.name
+            )
+        }.getOrDefault(Encouragements.Answer.CALL)
+
+        root.addView(answerButton(yesLabel(action), primary = true) {
+            EventLog.log(this, "ASK_RESULT", "answer=yes;action=$action;source=$source")
+            when (action) {
+                Encouragements.Answer.CALL ->
+                    CallHelper.startCall(this, source = "$source ← כן")
+                Encouragements.Answer.RECORDING ->
+                    startActivity(RecordingActivity.intentFor(this, source))
+                Encouragements.Answer.VIDEO ->
+                    startActivity(VideoActivity.intentFor(this, source))
+            }
             finish()
         })
 
@@ -101,6 +128,17 @@ class AskActivity : Activity() {
             setTextColor(Color.WHITE)
         })
         root.postDelayed({ finish() }, 2_500L)
+    }
+
+    /**
+     * ⚠️ **הכפתור אומר מה יקרה.** "כן" סתם, על שאלה שמציעה שיחה, מסתיר
+     * שהמכשיר עומד לחייג — ומי שלחץ בלי לקרוא לעומק מוצא את עצמו בשיחה
+     * שלא התכוון אליה. ברגע הזה זו טעות יקרה.
+     */
+    private fun yesLabel(action: Encouragements.Answer): String = when (action) {
+        Encouragements.Answer.CALL -> "כן, נדבר"
+        Encouragements.Answer.RECORDING -> "כן, השמע"
+        Encouragements.Answer.VIDEO -> "כן, הצג"
     }
 
     private fun answerButton(label: String, primary: Boolean, onClick: () -> Unit): Button =
