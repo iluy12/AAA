@@ -133,7 +133,17 @@ object SampleStore {
          * "איך נראה הציון לפני דיווח" דורשת להצליב שני מקורות לפי חותמות
          * זמן; איתו היא שאילתה על עמודה אחת.
          */
-        val nearReport: String = ""
+        val nearReport: String = "",
+        /**
+         * כמה דגימות תאוצה נכנסו לחישוב [motion].
+         *
+         * ⚠️ **בלי זה אי-אפשר לדעת אם ערך התנועה אמין בכלל.** בייצוא של
+         * 2026-08-03 ערכי התנועה נפלו על 1-2 ואז קפצו ל-18 ומעלה, בלי שום
+         * דבר באמצע. פיזור שמחושב מחמש דגימות נראה בדיוק ככה — וגם פיזור
+         * אמיתי של יד שנחה ואז זזה נראה ככה. **המספר הזה הוא ההבדל בין
+         * שתי התשובות**, והוא לא נשמר עד עכשיו.
+         */
+        val accelCount: Int = -1
     )
 
     fun append(context: Context, r: Record) {
@@ -159,7 +169,8 @@ object SampleStore {
             r.blocked,
             r.placeMeters,
             r.knownPlace,
-            r.nearReport
+            r.nearReport,
+            r.accelCount
         ).joinToString(",")
 
         val file = File(context.filesDir, FILE_NAME)
@@ -260,7 +271,7 @@ object SampleStore {
     const val CSV_HEADER =
         "time,hour,bpm,samples,first_ms,steps,still_ms,battery,no_contact," +
             "grav_x,grav_y,grav_z,motion,bpm_min,bpm_max,bpm_trend," +
-            "score,available,blocked,place_m,known_place,near_report"
+            "score,available,blocked,place_m,known_place,near_report,accel_n"
 
     /**
      * כל הרשומות כטקסט אחד, עם כותרות.
@@ -316,7 +327,8 @@ object SampleStore {
                 blocked = if (p.size > 18) p[18] else "",
                 placeMeters = if (p.size > 19) (p[19].toIntOrNull() ?: -1) else -1,
                 knownPlace = if (p.size > 20) (p[20].toIntOrNull() ?: -1) else -1,
-                nearReport = if (p.size > 21) p[21] else ""
+                nearReport = if (p.size > 21) p[21] else "",
+                accelCount = if (p.size > 22) (p[22].toIntOrNull() ?: -1) else -1
             )
         } catch (e: Exception) {
             null

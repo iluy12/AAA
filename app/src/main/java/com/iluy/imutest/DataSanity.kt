@@ -151,7 +151,43 @@ object DataSanity {
             }
         }
 
-        // --- 7. השעון לא על היד ---
+        // --- 7. חלון הדופק נאכל על ידי חימום החיישן ---
+        //
+        // ⚠️ **הבדיקה שהייתה חוסכת לנו חצי מהנתונים.** 45 שניות נקצבו
+        // לפרץ, והדגימה הראשונה הגיעה אחרי 23.7 — כלומר נשארו 21. הקצב
+        // עצמו היה תקין לגמרי, ולכן שום בדיקה על הדופק לא הייתה תופסת
+        // את זה. רק היחס בין השניים.
+        val warmups = records.filter { it.firstSampleMs >= 0 }.map { it.firstSampleMs }
+        if (warmups.size >= MIN_RECORDS) {
+            val median = warmups.sorted()[warmups.size / 2]
+            if (median > 10_000L) {
+                out.add(
+                    Finding(
+                        Level.ERROR, "burst_eaten_by_warmup",
+                        "החיישן האופטי לוקח ${median / 1000} שניות עד הדגימה " +
+                            "הראשונה. מתוך 45 שניות נשארות רק " +
+                            "${(45_000L - median) / 1000} של נתונים אמיתיים."
+                    )
+                )
+            }
+        }
+
+        // --- 8. פיזור התנועה מחושב ממעט מדי דגימות ---
+        val accelCounts = records.filter { it.accelCount >= 0 }.map { it.accelCount }
+        if (accelCounts.size >= MIN_RECORDS) {
+            val median = accelCounts.sorted()[accelCounts.size / 2]
+            if (median < 30) {
+                out.add(
+                    Finding(
+                        Level.WARN, "motion_from_few_samples",
+                        "ערך התנועה מחושב מ-$median דגימות תאוצה בלבד (חציון). " +
+                            "פיזור שמחושב ממעט דגימות קופץ בין ערכים ואינו אמין."
+                    )
+                )
+            }
+        }
+
+        // --- 9. השעון לא על היד ---
         val notWorn = records.count { it.bpm <= 0 || it.noContact > 0 }
         if (notWorn * 100 / n >= 40) {
             out.add(
@@ -163,7 +199,7 @@ object DataSanity {
             )
         }
 
-        // --- 8. חורים באיסוף ---
+        // --- 10. חורים באיסוף ---
         //
         // מדידה כל ~10 דקות. פער גדול פירושו שהשירות נפל, שהסוללה נגמרה,
         // או שהשעון היה כבוי — ובכל אחד מהם דיווח שיגיע אחר-כך יתויג לחלון
@@ -186,7 +222,7 @@ object DataSanity {
             )
         }
 
-        // --- 9. הסוללה לא זזה ---
+        // --- 11. הסוללה לא זזה ---
         val batteries = records.filter { it.battery in 0..100 }.map { it.battery }
         if (batteries.size >= 50 && batteries.distinct().size <= 1) {
             out.add(

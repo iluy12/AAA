@@ -139,9 +139,20 @@ class TapDetectorService : Service(), SensorEventListener {
         get() {
             val first = burstFirstSampleMs ?: return true
             val elapsedSinceFirst = SystemClock.elapsedRealtime() - first
-            val dataWindow = HeartRateSampler.BURST_MS - (first - burstStartElapsedMs)
-            return elapsedSinceFirst < dataWindow / 2
+            return elapsedSinceFirst < dataWindowMs(first - burstStartElapsedMs) / 2
         }
+
+    /**
+     * אורך חלון הנתונים בפועל, לפי זמן החימום.
+     *
+     * ⚠️ **חייב להישאר זהה ל-[extendBurstFromFirstSample].** שני מקומות
+     * שמחשבים את אותו דבר בנפרד הם בדיוק הצורה שבה שדה נשאר מעודכן ואחר
+     * מתיישן בשקט — וכאן זה היה משבש את מגמת-הדופק בלי שום סימן חיצוני.
+     */
+    private fun dataWindowMs(warmupMs: Long): Long =
+        if (warmupMs < 1_000L) HeartRateSampler.BURST_MS - warmupMs
+        else (warmupMs + HeartRateSampler.BURST_MS)
+            .coerceAtMost(HeartRateSampler.MAX_BURST_MS) - warmupMs
     private var burstStartElapsedMs = 0L
     private var burstFirstSampleMs: Long? = null
     private var burstWakeLock: android.os.PowerManager.WakeLock? = null
@@ -304,6 +315,11 @@ class TapDetectorService : Service(), SensorEventListener {
                     "power_ma=${"%.2f".format(s.power)};" +
                     "min_delay_us=${s.minDelay};" +
                     "max_range=${"%.1f".format(s.maximumRange)};" +
+                    // ⚠️ הצעד הקטן ביותר שהחיישן יכול למסור. זה מה שקובע
+                    // אם ערך תנועה נמוך הוא "היד נחה" או "אין לחיישן
+                    // רזולוציה לתאר את זה" — שתי מסקנות הפוכות לגמרי,
+                    // ועד עכשיו לא היה לנו את המספר כדי להכריע.
+                    "resolution=${s.resolution};" +
                     // wakeup קובע אם החיישן ממשיך למסור אירועים כשהמעבד
                     // ישן. עד עכשיו לא רשמנו את זה, ולכן חיפשנו את סיבת
                     // עצירת-הזרם בכיוונים אחרים. fifo מראה אם יש חוצץ
@@ -518,7 +534,11 @@ class TapDetectorService : Service(), SensorEventListener {
                     // דגימה בלי מגע עם העור. נספרת בנפרד כי היא מה שמבדיל
                     // "שעון על השולחן" מ"מנוחה אמיתית" — ראו Baseline.isResting.
                     if (bpm == null) burstNoContactCount++
-                    if (burstFirstSampleMs == null) burstFirstSampleMs = SystemClock.elapsedRealtime()
+                    if (burstFirstSampleMs == null) {
+                        val at = SystemClock.elapsedRealtime()
+                        burstFirstSampleMs = at
+                        extendBurstFromFirstSample(at - burstStartElapsedMs)
+                    }
 
                     // הצורה בתוך הפרץ. שתי המחציות נצברות בנפרד כדי שאפשר
                     // יהיה לדעת אם הדופק עלה או ירד **בתוך** אותן 21 שניות —
@@ -612,7 +632,10 @@ class TapDetectorService : Service(), SensorEventListener {
         val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
         burstWakeLock = pm?.newWakeLock(
             android.os.PowerManager.PARTIAL_WAKE_LOCK, "iluy:hr_burst"
-        )?.also { runCatching { it.acquire(HeartRateSampler.BURST_MS + 10_000L) } }
+        // ⚠️ לפי התקרה ולא לפי אורך הפרץ הרגיל — הפרץ יכול להתארך עכשיו
+        // אם החיישן מתחמם לאט, ונעילה שתפוג באמצע תיתן בדיוק את הפרץ
+        // הקטוע שאנחנו מנסים לתקן. הנעילה משוחררת במפורש בסיום ממילא.
+        )?.also { runCatching { it.acquire(HeartRateSampler.MAX_BURST_MS + 10_000L) } }
 
         sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
 
@@ -642,6 +665,34 @@ class TapDetectorService : Service(), SensorEventListener {
     }
 
     private val stopHeartRateBurstRunnable = Runnable { stopHeartRateBurst() }
+
+    /**
+     * מאריך את הפרץ כך שיהיו בו 45 שניות של **נתונים**, לא 45 שניות של שעון.
+     *
+     * ⚠️ **חצי מכל פרץ הלך לפח והמספר היה מולנו כל הזמן.** העמודה
+     * `first_ms` נרשמה מראש בדיוק לשאלה הזו — "האם 45 שניות הן יותר
+     * מהנדרש" — ומהייצוא התברר ההפך הגמור: הדגימה הראשונה הגיעה אחרי
+     * 23.7 שניות, ונשארו 21 שניות בלבד. 67 דגימות במקום 140.
+     *
+     * הקצב היה תקין (3.15 בשנייה), ולכן זו לא תקלת חיישן — החלון פשוט
+     * נמדד מהרגע הלא נכון.
+     *
+     * ⚠️ **המחיר הוא סוללה, ואין דרך לעקוף אותו.** החיישן יידלק עד 69
+     * שניות במקום 45. זו הסיבה ל-[HeartRateSampler.MAX_BURST_MS] — בלי
+     * תקרה, פרץ שבו החיישן לא נתפס כלל היה נשאר דלוק בלי סוף.
+     */
+    private fun extendBurstFromFirstSample(warmupMs: Long) {
+        // חיישן שכבר היה חם — אין מה להאריך.
+        if (warmupMs < 1_000L) return
+        val remaining = dataWindowMs(warmupMs)
+        if (remaining <= 0) return
+        hrDiagnosticHandler.removeCallbacks(stopHeartRateBurstRunnable)
+        hrDiagnosticHandler.postDelayed(stopHeartRateBurstRunnable, remaining)
+        EventLog.log(
+            this, "INFO",
+            "burst_extended;warmup_ms=$warmupMs;data_window_ms=$remaining"
+        )
+    }
 
     /**
      * שומר את הפרץ לזיכרון הקבוע, ומלמד ממנו את הבסיס אם הוא מנוחה.
@@ -698,6 +749,9 @@ class TapDetectorService : Service(), SensorEventListener {
             gravityY = if (accelCount > 0) ((accelSumY / accelCount) * 10).toInt() else 0,
             gravityZ = if (accelCount > 0) ((accelSumZ / accelCount) * 10).toInt() else 0,
             motion = motionSpread(),
+            // ⚠️ נשמר כדי שאפשר יהיה לדעת אם ערך התנועה בכלל אמין —
+            // ראו הערת-השדה ב-SampleStore.
+            accelCount = accelCount,
             bpmMin = if (burstBpmMin == Int.MAX_VALUE) -1 else burstBpmMin,
             bpmMax = if (burstBpmMax == Int.MIN_VALUE) -1 else burstBpmMax,
             // מגמה: מחצית שנייה פחות מחצית ראשונה. חיובי = הדופק עלה
