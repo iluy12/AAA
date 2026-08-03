@@ -82,6 +82,23 @@ object FallAftermath {
         EventLog.log(context, "FALL", "aftermath_started;hours=48")
     }
 
+    /**
+     * פותח או סוגר את החלון ידנית.
+     *
+     * ⚠️ נדרש כשמבטלים נפילה בלוח: החלון נפתח מהדיווח, ולכן הוא צריך
+     * להיסגר איתו. בלי זה המערכת נשארת ערנית יומיים בגלל אירוע שהמשתמש
+     * כבר אמר שלא קרה.
+     */
+    fun setActive(context: Context, active: Boolean) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (active) {
+            prefs.edit().putLong("eyes_until", System.currentTimeMillis() + WINDOW_MS).apply()
+        } else {
+            prefs.edit().remove("eyes_until").apply()
+        }
+        EventLog.log(context, "FALL", "aftermath_set;active=$active")
+    }
+
     /** האם אנחנו בתוך היומיים שאחרי נפילת "עיניים". */
     fun inHeightenedWindow(context: Context): Boolean {
         val until = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

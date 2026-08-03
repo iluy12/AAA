@@ -102,10 +102,45 @@ object CalendarStore {
         if (index !in entries.indices) return
         entries[index] = entries[index].copy(cancelled = cancelled)
         writeEntries(context, dateKey, entries)
+
+        val category = entries[index].category
         EventLog.log(
             context, "FALL",
-            "cancel_toggled;date=$dateKey;i=$index;cat=${entries[index].category};on=$cancelled"
+            "cancel_toggled;date=$dateKey;i=$index;cat=$category;on=$cancelled"
         )
+
+        // ⚠️ **הביטול חייב להגיע גם למנוע, ולא רק ללוח.** נבו ביקש
+        // *"לבטל נפילות מהלוח ואז לאותת למוח לא להתייחס לנפילה הזו"* —
+        // וזה בדיוק החלק שלא נבנה. התוצאה: הוא ביטל נפילה, ומד המצב
+        // על מסך השעון נשאר זהוב.
+        //
+        // מכשיר שממשיך להתנהג כאילו קרה משהו שהמשתמש כבר אמר שלא קרה
+        // **גרוע יותר מהיעדר ביטול** — הוא מלמד שאין טעם לתקן.
+        //
+        // ⚠️ רק היום עצמו: חלון ההסלמה הוא שש שעות ממילא, ולביטול נפילה
+        // מלפני שבוע אין מה להסיר.
+        if (dateKey != todayKey()) return
+        val kind = "fall_$category"
+        if (cancelled) {
+            Escalation.revoke(context, kind)
+            // ⚠️ וגם ההודעה המעודדת שממתינה. נבו: *"ההתראה של אחרי
+            // נפילה לא התבטלה גם כן."* הודעה שמגיעה על נפילה שבוטלה
+            // היא לא רק מיותרת — היא אומרת למשתמש שהביטול לא נקלט.
+            FallReport.cancelPending(context, "fall_cancelled")
+        } else {
+            Escalation.record(context, kind)
+        }
+
+        // חלון הערנות של "עיניים" נפתח מהדיווח, ולכן הוא נסגר איתו.
+        if (FallSeverity.fromLabel(category) == FallSeverity.EYES) {
+            FallAftermath.setActive(
+                context,
+                entries.any { !it.cancelled && FallSeverity.fromLabel(it.category) == FallSeverity.EYES }
+            )
+        }
+
+        // ומספר הנפילות היום — הוא שקובע אם התגובה הבאה תהיה "נפילה שנייה".
+        FallReport.setTodayCount(context, entries.count { !it.cancelled })
     }
 
     // ---------- קריאה ----------

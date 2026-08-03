@@ -59,8 +59,23 @@ class FallPickerActivity : Activity() {
             )
         }
 
-        /** ימין, שמאל, מטה, מעלה — בסדר של [RadialFallButton.CATEGORIES]. */
-        private val DIRS = listOf("ברית", "עיניים", "מחשבה", "קרי לילה")
+        /**
+         * הכיוונים: ימינה, שמאלה, מטה, מעלה.
+         *
+         * ⚠️ **נגזר מ-[FallSeverity] ולא נכתב כמחרוזות.** הייתה כאן
+         * רשימת שמות משלי, ו-[RadialFallButton.CATEGORIES] מחזיקה את
+         * אותם שמות **בסדר אחר** — שתי רשימות זהות בתוכן ושונות בסדר
+         * הן בדיוק הצורה שבה שינוי במקום אחד לא מגיע לשני.
+         *
+         * וכאן זה לא היה נראה כבאג: שם שגוי גורם ל-`fromLabel` ליפול
+         * בשקט לברירת המחדל, וכל בחירה הייתה נרשמת כנפילה בברית.
+         */
+        private val DIRS = listOf(
+            FallSeverity.SEED.label,      // ימינה
+            FallSeverity.EYES.label,      // שמאלה
+            FallSeverity.THOUGHT.label,   // מטה
+            FallSeverity.NOCTURNAL.label  // מעלה
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -40,7 +40,22 @@ import kotlin.random.Random
 object FallReport {
 
     private const val PREFS_NAME = "iluy_falls"
-    private const val CHANNEL_ID = "iluy_after_fall"
+    /**
+     * ⚠️ **`_v2`, וזה לא קוסמטיקה — זו הסיבה שהמסך המלא לא נפתח.**
+     *
+     * אנדרואיד **לא מרשה להעלות חשיבות של ערוץ אחרי שהוא נוצר.** קריאה
+     * ל-`createNotificationChannel` עם `IMPORTANCE_HIGH` על ערוץ שכבר
+     * קיים ב-`IMPORTANCE_DEFAULT` פשוט מתעלמים ממנה — בלי שגיאה ובלי
+     * שום סימן.
+     *
+     * ולכן `setFullScreenIntent` לא עשה כלום: הוא נדרש ערוץ HIGH, והערוץ
+     * נשאר DEFAULT מההתקנה הראשונה. נבו דיווח בדיוק את זה — *"נפתחת
+     * כהתראה מלמעלה ולא מדליקה מסך, רק צליל"*.
+     *
+     * **הדרך היחידה לשנות חשיבות היא מזהה ערוץ חדש.** כל תיקון אחר היה
+     * נראה נכון בקוד וממשיך להיכשל במכשיר.
+     */
+    private const val CHANNEL_ID = "iluy_after_fall_v2"
     private const val NOTIFICATION_ID = 4301
     private const val REQUEST_CODE = 4302
 
@@ -69,6 +84,18 @@ object FallReport {
 
     /** כמה נפילות דווחו היום. */
     fun todayCount(context: Context): Int = prefs(context).getInt("count_${todayKey()}", 0)
+
+    /**
+     * מעדכן את הספירה אחרי ביטול בלוח.
+     *
+     * ⚠️ הספירה הזו קובעת אם התגובה הבאה תהיה "נפילה שנייה היום" — הטון
+     * הישיר והמהיר. בלי עדכון, ביטול נפילה היה משאיר את המערכת בטון
+     * החמור על סמך אירוע שנמחק.
+     */
+    fun setTodayCount(context: Context, count: Int) {
+        prefs(context).edit().putInt("count_${todayKey()}", count.coerceAtLeast(0)).apply()
+        EventLog.log(context, "FALL", "today_count_set;count=$count")
+    }
 
     /**
      * רושם דיווח נפילה, מסמן את חלון הלמידה, ומתזמן את ההודעה המעודדת.

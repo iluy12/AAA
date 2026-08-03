@@ -83,10 +83,8 @@ object Escalation {
      */
     fun record(context: Context, kind: String): Level {
         val now = System.currentTimeMillis()
-        val fresh = activeEvents(context, now) + (now to points(kind))
-        prefs(context).edit()
-            .putString("events", fresh.joinToString(";") { "${it.first},${it.second}" })
-            .apply()
+        val fresh = activeEvents(context, now) + Event(now, points(kind), kind)
+        write(context, fresh)
         val level = levelNow(context)
         EventLog.log(
             context, "ESCALATION",
@@ -95,19 +93,59 @@ object Escalation {
         return level
     }
 
-    private fun activeEvents(context: Context, now: Long): List<Pair<Long, Int>> =
+    /**
+     * ⚠️ **`kind` נשמר ולא רק הניקוד.** בלעדיו אי-אפשר לבטל אירוע
+     * מסוים: נבו ביקש שאפשר יהיה לבטל נפילה שנרשמה בטעות ו**"לאותת
+     * למוח לא להתייחס אליה"**, וכדי להסיר בדיוק אותה צריך לדעת מה היא
+     * הייתה. ביטול לפי ניקוד בלבד היה יכול להסיר אירוע אחר באותו שווי.
+     */
+    private data class Event(val at: Long, val points: Int, val kind: String)
+
+    private fun activeEvents(context: Context, now: Long): List<Event> =
         (prefs(context).getString("events", "") ?: "")
             .split(";")
             .mapNotNull {
                 val p = it.split(",")
-                if (p.size != 2) return@mapNotNull null
+                if (p.size < 2) return@mapNotNull null
                 val t = p[0].toLongOrNull() ?: return@mapNotNull null
                 val v = p[1].toIntOrNull() ?: return@mapNotNull null
-                if (now - t > WINDOW_MS) null else t to v
+                // תאימות לאחור: רשומות מהגרסה הקודמת נשמרו בלי הסוג.
+                if (now - t > WINDOW_MS) null else Event(t, v, p.getOrElse(2) { "" })
             }
 
+    private fun write(context: Context, events: List<Event>) {
+        prefs(context).edit()
+            .putString("events", events.joinToString(";") { "${it.at},${it.points},${it.kind}" })
+            .apply()
+    }
+
+    /**
+     * מבטל את האירוע האחרון מסוג נתון.
+     *
+     * ⚠️ **זה מה שהיה חסר, והמד נשאר זהוב אחרי ביטול.** ביטול נפילה
+     * בלוח סימן דגל ב-[CalendarStore] בלבד — הניקוד נשאר, ההסלמה נשארה,
+     * ומסך השעון המשיך להראות מצב מוגבר על אירוע שהמשתמש כבר אמר שלא
+     * קרה. **וזה גרוע פי כמה מהיעדר ביטול**, כי הוא מרגיש שהמערכת
+     * מתעלמת ממנו.
+     */
+    fun revoke(context: Context, kind: String): Boolean {
+        val now = System.currentTimeMillis()
+        val events = activeEvents(context, now)
+        val idx = events.indexOfLast { it.kind == kind }
+        if (idx < 0) {
+            EventLog.log(context, "ESCALATION", "revoke_miss;kind=$kind")
+            return false
+        }
+        write(context, events.filterIndexed { i, _ -> i != idx })
+        EventLog.log(
+            context, "ESCALATION",
+            "revoked;kind=$kind;total=${total(context)};level=${levelNow(context)}"
+        )
+        return true
+    }
+
     fun total(context: Context): Int =
-        activeEvents(context, System.currentTimeMillis()).sumOf { it.second }
+        activeEvents(context, System.currentTimeMillis()).sumOf { it.points }
 
     fun levelNow(context: Context): Level {
         val t = total(context)
