@@ -30,6 +30,8 @@
     <uses-permission android:name="android.permission.BODY_SENSORS" />
     <!-- התראת "עילוי שלחו לך סרטון" -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- פותח מסך במקום שורה נחתכת. ראו MessageActivity. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <!-- פתיחת פאנלי המערכת (התראות, הגדרות מהירות) בהחלקה ממסך-השעון.
          הרשאה רגילה, נענית אוטומטית. נדרשת רק כי החלפנו את הלאנצ'ר של
          היצרן ואיתו את המחוות שהוא סיפק. -->
@@ -100,6 +102,13 @@
           כמו במסכי ההתערבות האחרים: הם נפתחים מהודעה, ומסך כבוי היה הופך
           אותם לכפתור שלא מוביל לשום מקום.
         -->
+        <activity
+            android:name=".MessageActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
         <activity
             android:name=".RecordingActivity"
             android:exported="false"

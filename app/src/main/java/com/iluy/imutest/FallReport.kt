@@ -241,7 +241,10 @@ object FallReport {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 nm.createNotificationChannel(
                     NotificationChannel(
-                        CHANNEL_ID, "אחרי דיווח", NotificationManager.IMPORTANCE_DEFAULT
+                        // ⚠️ **HIGH ולא DEFAULT.** `setFullScreenIntent`
+                        // מתעלמים ממנו בערוץ שאינו HIGH — כלומר בלי
+                        // השורה הזו התיקון היה נראה כאילו הוא לא עובד.
+                        CHANNEL_ID, "אחרי דיווח", NotificationManager.IMPORTANCE_HIGH
                     ).apply { enableVibration(false) }
                 )
             }
@@ -284,8 +287,15 @@ object FallReport {
                 Intent(context, HelpMenuActivity::class.java)
                     .putExtra(HelpMenuActivity.EXTRA_SOURCE, "אחרי דיווח (רמה $level)")
             } else {
-                Intent(context, WatchFaceActivity::class.java)
+                // ⚠️ **לא מסך-השעון.** הוא לא מציג את המשפט בכלל, ולכן
+                // ההודעה נשארה רק כשורה נחתכת בשורת ההתראות — בדיוק
+                // התלונה של נבו מ-2.8.
+                MessageActivity.intentFor(context, text, "אחרי נפילה")
             }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+            val pending = PendingIntent.getActivity(
+                context, 0, target, PendingIntent.FLAG_UPDATE_CURRENT
+            )
 
             nm.notify(
                 NOTIFICATION_ID,
@@ -295,11 +305,17 @@ object FallReport {
                     .setStyle(NotificationCompat.BigTextStyle().bigText(text))
                     .setSmallIcon(android.R.drawable.ic_menu_compass)
                     .setAutoCancel(true)
-                    .setContentIntent(
-                        PendingIntent.getActivity(
-                            context, 0, target, PendingIntent.FLAG_UPDATE_CURRENT
-                        )
-                    )
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                    // ⚠️ **זה מה שפותח מסך במקום לצייר שורה.** אותו מנגנון
+                    // ששיחה נכנסת משתמשת בו, ומאותה סיבה: המסך של השעון
+                    // צר מדי מכדי להציג את המשפטים האלה, ומשפט שנחתך
+                    // באמצע הוא משפט שלא נאמר.
+                    //
+                    // ההודעה נשארת גם כן — אם המערכת תסרב לפתוח מסך,
+                    // עדיף שורה נחתכת מכלום.
+                    .setFullScreenIntent(pending, true)
+                    .setContentIntent(pending)
                     .build()
             )
             // נדלק בעדינות — אושר: "לא מפריע לי בלילה".
