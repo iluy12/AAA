@@ -37,11 +37,22 @@ class MenuCarousel(
     private val pages: List<Page>
 ) {
 
+    /**
+     * @param onOpen נגיעה רגילה.
+     * @param onHold לחיצה ארוכה. `null` פירושו שאין לדף מסלול ארוך,
+     *        ואז לחיצה ארוכה מתנהגת כמו נגיעה.
+     *
+     * ⚠️ **שני מסלולים, וזו החלטה של נבו על "נפלתי":** נגיעה רגילה
+     * מובילה למסך אישור ("האם לדווח על נפילה?"), ולחיצה ארוכה פותחת
+     * ישר את בחירת הסוג. **המסלול הקצר מקבל את השער הנוסף** — נגיעה
+     * אפשר לעשות בטעות בכיס, לחיצה ארוכה לא.
+     */
     data class Page(
         val title: String,
         val subtitle: String,
         val colour: String,
-        val onOpen: (Context) -> Unit
+        val onOpen: (Context) -> Unit,
+        val onHold: ((Context) -> Unit)? = null
     )
 
     private var index = 0
@@ -74,6 +85,12 @@ class MenuCarousel(
         override fun onSingleTapUp(e: MotionEvent): Boolean {
             pages[index].onOpen(activity)
             return true
+        }
+
+        override fun onLongPress(e: MotionEvent) {
+            val page = pages[index]
+            EventLog.log(activity, "INFO", "menu_long_press;page=${page.title}")
+            (page.onHold ?: page.onOpen)(activity)
         }
     })
 

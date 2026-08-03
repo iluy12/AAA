@@ -54,7 +54,17 @@ class FallPickerActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AlertHelper.wakeScreen(this)
+        // ⚠️ מסך זמני, ולכן מותר. ראו את ההסבר ב-Immersive על מסך-השעון.
+        Immersive.apply(this)
         setContentView(PickerView(this))
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            Immersive.apply(this)
+            Immersive.logGeometry(this, "fall_picker")
+        }
     }
 
     override fun onBackPressed() { finish() }

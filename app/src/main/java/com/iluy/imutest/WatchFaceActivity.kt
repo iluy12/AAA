@@ -322,7 +322,16 @@ class WatchFaceActivity : Activity() {
                 val shorterAxis = Math.min(Math.abs(dx), Math.abs(dy))
                 val minShorterAxis = length * DebugConfig.X_GESTURE_MIN_DIAGONAL_RATIO
                 if (shorterAxis < minShorterAxis) {
-                    logXReject("not_diagonal", "short=${shorterAxis.toInt()};need=${minShorterAxis.toInt()}")
+                    // ⚠️ `from=` ו-`view=` נוספו אחרי שהתברר שהם הנתון
+                    // המכריע. תשע המשיכות שהצליחו ב-3.8 נרשמו כאן **בלי**
+                    // נקודת ההתחלה, ולכן אי-אפשר היה לדעת מהו האזור הבטוח —
+                    // רק להסיק אותו מהיעדר כישלונות, וזו הסקה חלשה.
+                    logXReject(
+                        "not_diagonal",
+                        "short=${shorterAxis.toInt()};need=${minShorterAxis.toInt()};" +
+                            "len=${length.toInt()};from=${downX.toInt()},${downY.toInt()};" +
+                            "view=${root.width}x${root.height}"
+                    )
                     handleSwipe(dx, dy, root.width, root.height)
                     return
                 }

@@ -122,9 +122,12 @@ class MainActivity : Activity() {
             MenuCarousel(
                 this,
                 listOf(
+                    // ⚠️ נגיעה → אישור, לחיצה ארוכה → בחירת סוג. ראו Page.
                     MenuCarousel.Page(
-                        "נפלתי", "גע כדי לדווח", "#8C3B34"
-                    ) { FallPickerActivity.launch(it) },
+                        "נפלתי", "גע לדיווח · החזק לבחירת סוג", "#8C3B34",
+                        onOpen = { FallConfirmActivity.launch(it) },
+                        onHold = { FallPickerActivity.launch(it) }
+                    ),
                     MenuCarousel.Page(
                         "מצב רוח", "איך אתה מרגיש עכשיו", "#2E5E7D"
                     ) { it.startActivity(Intent(it, MoodPickerActivity::class.java)) },
