@@ -83,6 +83,9 @@ class WatchFaceActivity : Activity() {
     private var farY = 0f
     private var farDist = 0.0
     private var moveCount = 0
+
+    /** הנקודות עצמן. ראו את ההערה המקבילה ב-FallPickerActivity. */
+    private val strokeTrace = StringBuilder()
     private var lastStrokeDirection = 0 // 1 = "\", -1 = "/", 0 = אין עדיין
     private var lastStrokeMs = 0L
     // נקודת-האמצע של הקו הקודם, לא נקודת-ההתחלה שלו — ראו ההסבר
@@ -230,9 +233,13 @@ class WatchFaceActivity : Activity() {
                 downY = event.rawY
                 farX = downX; farY = downY; farDist = 0.0
                 moveCount = 0
+                strokeTrace.setLength(0)
             }
             MotionEvent.ACTION_MOVE -> {
                 moveCount++
+                if (moveCount <= 10) {
+                    strokeTrace.append("${event.rawX.toInt()},${event.rawY.toInt()} ")
+                }
                 val d = Math.hypot(
                     (event.rawX - downX).toDouble(), (event.rawY - downY).toDouble()
                 )
@@ -274,11 +281,23 @@ class WatchFaceActivity : Activity() {
                     // ⚠️ `moves` הוא המספר שמכריע אם יש בכלל מחוות על
                     // המכשיר הזה. אפס = מסך המגע לא מדווח תנועה, וכל
                     // ממשק שנשען על גרירה חייב להיבנות מחדש.
-                    logXReject(
-                        "too_short",
-                        "len=${length.toInt()};need=${minLength.toInt()};" +
-                            "moves=$moveCount;up_len=${upDist.toInt()};far_len=${farDist.toInt()}"
-                    )
+                    // ⚠️ **נגיעה רגילה מגיעה לכאן גם היא, וזה הטעה אותי.**
+                    // `dispatchTouchEvent` רואה כל מגע במסך, ולנגיעה אין
+                    // אורך — כלומר כל לחיצה תמימה נרשמת בדיוק כמו ניסיון
+                    // ✕ שנכשל. הסקתי מ-14 שורות כאלה שהמנגנון שבור, בזמן
+                    // שרובן היו כנראה לחיצות רגילות.
+                    //
+                    // מכאן ואילך נרשם רק מה שהיה בו ניסיון תנועה אמיתי.
+                    if (moveCount >= 3) {
+                        logXReject(
+                            "too_short",
+                            "len=${length.toInt()};need=${minLength.toInt()};" +
+                                "moves=$moveCount;up_len=${upDist.toInt()};" +
+                                "far_len=${farDist.toInt()};" +
+                                "from=${downX.toInt()},${downY.toInt()};" +
+                                "trace=[${strokeTrace.toString().trim()}]"
+                        )
+                    }
                     return
                 }
 

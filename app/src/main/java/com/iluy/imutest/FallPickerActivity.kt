@@ -85,6 +85,18 @@ class FallPickerActivity : Activity() {
         private var farDist = 0f
         private var moveCount = 0
 
+        /**
+         * הקואורדינטות עצמן, ולא רק כמה אירועים הגיעו.
+         *
+         * ⚠️ **בלי זה אי-אפשר להבדיל בין שתי מסקנות הפוכות.** בלוג נרשם
+         * `moves=9` עם `far_len=0` — תשע הודעות תנועה בלי שום תזוזה. זה
+         * יכול להיות מסך מגע שמדווח מיקום קבוע, וזה יכול להיות פשוט אצבע
+         * שנחה במקום. הראשונה אומרת "לזרוק את כל המחוות מהמוצר", השנייה
+         * אומרת "לא קרה כלום". **הסקתי את הראשונה מראיה שלא מבחינה
+         * ביניהן**, ולכן כאן נרשמות הנקודות עצמן.
+         */
+        private val trace = StringBuilder()
+
         private fun dist(x: Float, y: Float): Float {
             val dx = x - downX
             val dy = y - downY
@@ -141,7 +153,11 @@ class FallPickerActivity : Activity() {
                     curX = downX; curY = downY
                     farDist = 0f
                     moveCount = 0
+                    trace.setLength(0)
                     touching = true
+                    EventLog.log(
+                        context, "FALL", "picker_down;at=${downX.toInt()},${downY.toInt()}"
+                    )
                     // ⚠️ חגורה ושלייקס: גם במסך מלא, אם מישהו יעטוף את זה
                     // בעתיד במיכל גליל — הגרירה תישבר בשקט בדיוק כמו קודם.
                     parent?.requestDisallowInterceptTouchEvent(true)
@@ -149,6 +165,9 @@ class FallPickerActivity : Activity() {
                 }
                 MotionEvent.ACTION_MOVE -> {
                     moveCount++
+                    if (moveCount <= 10) {
+                        trace.append("${event.x.toInt()},${event.y.toInt()} ")
+                    }
                     // ⚠️ **הרחוקה ביותר, לא האחרונה.** אצבע שחוזרת לאמצע
                     // לפני ההרמה ביטלה את הבחירה, וזו תנועה טבעית לגמרי.
                     val d = dist(event.x, event.y)
@@ -177,7 +196,8 @@ class FallPickerActivity : Activity() {
                         context, "FALL",
                         "picker_up;dx=${(curX - downX).toInt()};dy=${(curY - downY).toInt()};" +
                             "moves=$moveCount;up_len=${upDist.toInt()};far_len=${farDist.toInt()};" +
-                            "picked=${if (picked >= 0) RadialFallButton.CATEGORIES[picked] else "none"}"
+                            "picked=${if (picked >= 0) RadialFallButton.CATEGORIES[picked] else "none"};" +
+                            "trace=[${trace.toString().trim()}]"
                     )
                     touching = false
                     invalidate()
@@ -190,6 +210,16 @@ class FallPickerActivity : Activity() {
                     }
                 }
                 MotionEvent.ACTION_CANCEL -> {
+                    // ⚠️ **החשוד המרכזי בשלושת הניסיונות שנעלמו.** נבו תיאר
+                    // ארבע משיכות, ובלוג נרשמה רק אחת. אם המערכת חוטפת את
+                    // המחווה באמצע (מחוות-מערכת של השעון), היא נגמרת ב-CANCEL
+                    // ולא ב-UP — ואז אין `picker_up` בכלל, וזה נראה בדיוק
+                    // כמו "לא נגע במסך".
+                    EventLog.log(
+                        context, "FALL",
+                        "picker_cancel;moves=$moveCount;far_len=${farDist.toInt()};" +
+                            "trace=[${trace.toString().trim()}]"
+                    )
                     touching = false
                     invalidate()
                 }
