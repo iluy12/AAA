@@ -274,7 +274,10 @@ object SampleStore {
         val file = File(context.filesDir, FILE_NAME)
         if (!file.exists()) return CSV_HEADER + "\n"
         return try {
-            CSV_HEADER + "\n" + file.readText()
+            // ⚠️ **הממצאים בראש הקובץ, לפני הכותרות.** קובץ של אלפי שורות
+            // נפתח בהתחלה, ומה ששבור צריך להיות הדבר הראשון שנקרא. שורות
+            // `#` אינן מפריעות לשום כלי ניתוח.
+            DataSanity.exportHeader(since(context, 0L)) + CSV_HEADER + "\n" + file.readText()
         } catch (e: Exception) {
             CSV_HEADER + "\n"
         }

@@ -262,6 +262,17 @@ class MainActivity : Activity() {
                     runOnUiThread { showUploadResult(result, "$n רשומות") }
                 }.start()
             })
+            // ⚠️ **הבדיקה שהמכשיר עושה על עצמו.** כל באג שנמצא עד היום נמצא
+            // מהסתכלות בטבלה ולא מקריאת הקוד, וכולם באותה דרך: שילוב שלא
+            // יכול להיות. עדיף שהמכשיר יצעק בעצמו מאשר שנגלה בעוד שבועיים.
+            container.addView(secondaryButton("בדוק תקינות נתונים") {
+                logDisplay?.apply {
+                    text = DataSanity.describe(this@MainActivity)
+                    textSize = 13f
+                    setTextColor(android.graphics.Color.BLACK)
+                    visibility = android.view.View.VISIBLE
+                }
+            })
             // ⚠️ **זה הכפתור הנכון אחרי שינוי בהגדרת "מנוחה", לא זה שמתחתיו.**
             // הבסיס נגזר מהרשומות, והן שמורות — ולכן אפשר לתקן אותו בלי
             // לזרוק את האיסוף. הכפתור שמתחת מוחק גם את הרשומות, כלומר גם
