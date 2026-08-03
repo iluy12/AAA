@@ -235,6 +235,24 @@ class WatchFaceActivity : Activity() {
                 moveCount = 0
                 strokeTrace.setLength(0)
             }
+            // ⚠️ **מחווה שנחטפה לא הותירה שום עקבות, וזה הסתיר את הבעיה.**
+            //
+            // כשמחוות-מערכת של השעון תופסת את התנועה — מגירת ההתראות
+            // מלמעלה, ההגדרות מלמטה — אנדרואיד שולח ACTION_CANCEL ולא
+            // ACTION_UP. הענף היחיד שכתב ללוג היה ACTION_UP, ולכן מחווה
+            // חטופה נראתה **בדיוק כמו מסך שלא נגעו בו בכלל**.
+            //
+            // נבו תיאר את הסימפטום מדויק: "לצדדים זה היה תופס, למעלה
+            // ולמטה זה היה גולל". הוא ייחס את זה ל-ScrollView שהיה בעיצוב
+            // הישן — הוא כבר לא שם, ומחוות המערכת הן המועמד שנשאר.
+            MotionEvent.ACTION_CANCEL -> {
+                EventLog.log(
+                    this, "DEBUG",
+                    "x_cancelled;moves=$moveCount;far_len=${farDist.toInt()};" +
+                        "from=${downX.toInt()},${downY.toInt()};" +
+                        "trace=[${strokeTrace.toString().trim()}]"
+                )
+            }
             MotionEvent.ACTION_MOVE -> {
                 moveCount++
                 if (moveCount <= 10) {
