@@ -99,10 +99,23 @@ object FallReport {
         // ⚠️ "עיניים" פותחת חלון ערנות של יומיים — היא מתארת עתיד ולא עבר.
         FallAftermath.record(context, severity)
 
-        // ⚠️ טביעת המקום נשמרת **רק לנפילות שקרו כאן ועכשיו.** קרי לילה
-        // מדווח בבוקר על השינה, ולכן המקום שבו הוא עומד בזמן הדיווח אינו
-        // המקום שבו זה קרה — שמירה שלו הייתה מלמדת את המערכת את המטבח.
-        if (severity.reportIsNearEvent) {
+        // ⚠️ **שני תנאים, לא אחד.** הקטגוריה אומרת אם הדיווח *אמור* להיות
+        // סמוך לאירוע; הנתונים אומרים אם השעון בכלל **היה שם**.
+        //
+        // ב-2026-08-01 אין אף רשומה — שבת, והשעון היה כבוי. דיווח שנמסר
+        // במוצאי שבת על משהו שקרה בבוקר נראה למערכת בדיוק כמו דיווח בזמן
+        // אמת: היא הייתה מתייגת את חצי השעה שקדמה ללחיצה, ולומדת את החדר
+        // שבו הוא עמד באותו רגע. **תווית שגויה גרועה מהיעדר תווית**, כי
+        // אי-אפשר לזהות אותה אחר-כך.
+        //
+        // אפס רשומות בחלון פירושו שהשעון לא אסף — שבת, סוללה, כיבוי.
+        // התנאי הזה מטפל בשלושתם בלי לשאול את המשתמש כלום, וזה חשוב:
+        // הוכרע שלא מוסיפים חיכוך ברגע הזה.
+        val lookback = if (count > 1) LOOKBACK_ROUGH_MS else LOOKBACK_MS
+        val window = SampleStore.since(context, now - lookback)
+        val watchWasThere = window.isNotEmpty()
+
+        if (severity.reportIsNearEvent && watchWasThere) {
             RoomPrint.capture(context, LastMagnitude.value)?.let {
                 RoomPrint.rememberFallLocation(context, it)
             }
@@ -115,10 +128,12 @@ object FallReport {
         // ⚠️ קרי לילה מדווח בבוקר על מה שקרה בשינה — חצי השעה שקדמה
         // לדיווח היא ארוחת בוקר, לא האירוע. ניתוח החלון כאן היה מייצר
         // תווית שגויה, וזה גרוע מהיעדר תווית.
-        if (severity.reportIsNearEvent) {
-            markLearningWindow(context, now, count)
-        } else {
-            EventLog.log(context, "FALL", "window_skipped;reason=report_far_from_event")
+        when {
+            !severity.reportIsNearEvent ->
+                EventLog.log(context, "FALL", "window_skipped;reason=report_far_from_event")
+            !watchWasThere ->
+                EventLog.log(context, "FALL", "window_skipped;reason=no_records_in_window")
+            else -> markLearningWindow(context, now, lookback, window)
         }
         scheduleEncouragement(context, count)
 
@@ -134,11 +149,12 @@ object FallReport {
      * ⚠️ **החלון שלפני הוא מה שמעניין, לא האירוע עצמו.** הוא תקופת השקט
      * שבה ההתערבות הייתה מועילה. הנפילה עצמה כוללת תנועה ולכן מזוהמת כאות.
      */
-    private fun markLearningWindow(context: Context, nowMs: Long, count: Int) {
-        val lookback = if (count > 1) LOOKBACK_ROUGH_MS else LOOKBACK_MS
-        val from = nowMs - lookback
-        val records = SampleStore.since(context, from)
-
+    private fun markLearningWindow(
+        context: Context,
+        nowMs: Long,
+        lookback: Long,
+        records: List<SampleStore.Record>
+    ) {
         EventLog.log(
             context, "FALL",
             "window;lookback_min=${lookback / 60000};records=${records.size}"
