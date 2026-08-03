@@ -125,8 +125,8 @@ class MainActivity : Activity() {
                     // ⚠️ נגיעה → אישור, לחיצה ארוכה → בחירת סוג. ראו Page.
                     MenuCarousel.Page(
                         "נפלתי", "גע לדיווח · החזק לבחירת סוג", "#8C3B34",
-                        onOpen = { FallConfirmActivity.launch(it) },
-                        onHold = { FallPickerActivity.launch(it) }
+                        onHold = { FallPickerActivity.launch(it) },
+                        onOpen = { FallConfirmActivity.launch(it) }
                     ),
                     MenuCarousel.Page(
                         "מצב רוח", "איך אתה מרגיש עכשיו", "#2E5E7D"

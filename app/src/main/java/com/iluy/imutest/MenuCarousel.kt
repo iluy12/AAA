@@ -46,13 +46,18 @@ class MenuCarousel(
      * מובילה למסך אישור ("האם לדווח על נפילה?"), ולחיצה ארוכה פותחת
      * ישר את בחירת הסוג. **המסלול הקצר מקבל את השער הנוסף** — נגיעה
      * אפשר לעשות בטעות בכיס, לחיצה ארוכה לא.
+     *
+     * ⚠️ **`onOpen` חייב להישאר הפרמטר האחרון.** רוב הדפים נבנים עם
+     * למדה סופית — `Page("מצב רוח", "...", "#2E5E7D") { ... }` — ובקוטלין
+     * למדה כזו נצמדת תמיד לפרמטר האחרון. כששמתי את `onHold` אחריו,
+     * הלמדה של כל דף נקשרה ללחיצה הארוכה ו-`onOpen` נשאר בלי ערך.
      */
     data class Page(
         val title: String,
         val subtitle: String,
         val colour: String,
-        val onOpen: (Context) -> Unit,
-        val onHold: ((Context) -> Unit)? = null
+        val onHold: ((Context) -> Unit)? = null,
+        val onOpen: (Context) -> Unit
     )
 
     private var index = 0
