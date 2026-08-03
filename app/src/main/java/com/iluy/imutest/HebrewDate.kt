@@ -70,10 +70,18 @@ object HebrewDate {
     }
 
     /**
-     * למשל "כ׳ באב תשפ״ו". מחרוזת ריקה אם הלוח אינו זמין — עדיף כלום
-     * מתאריך שגוי.
+     * היום והחודש בנפרד.
+     *
+     * ⚠️ **שני שדות ולא מחרוזת אחת, כי כך זה מוצג.** נבו ביקש את היום
+     * גדול ואת החודש קטן מתחתיו — פירוק של מחרוזת מוכנה בחזרה לחלקים
+     * הוא בדיוק המקום שבו נשבר פורמט בגרסה הבאה.
+     *
+     * `null` אם הלוח אינו זמין. **עדיף כלום מתאריך שגוי** — תאריך עברי
+     * שגוי על מסך שעון לא מתריע על עצמו, הוא פשוט מוצג.
      */
-    fun format(date: Date = Date()): String = runCatching {
+    data class Parts(val day: String, val month: String)
+
+    fun parts(date: Date = Date()): Parts? = runCatching {
         val cal = android.icu.util.HebrewCalendar()
         cal.time = date
         // ⚠️ אחרי השקיעה זה כבר היום הבא. ראו הערת-המחלקה.
@@ -81,14 +89,8 @@ object HebrewDate {
         if (civil.get(java.util.Calendar.HOUR_OF_DAY) >= SUNSET_HOUR) {
             cal.add(android.icu.util.HebrewCalendar.DATE, 1)
         }
-
         val day = cal.get(android.icu.util.HebrewCalendar.DAY_OF_MONTH)
         val month = cal.get(android.icu.util.HebrewCalendar.MONTH)
-        // השנה נכתבת בלי האלפים, כנהוג: 5786 ← תשפ״ו
-        val year = cal.get(android.icu.util.HebrewCalendar.YEAR) % 1000
-
-        val name = MONTHS.getOrNull(month) ?: return@runCatching ""
-        // "ב" לפני שם החודש, חוץ מאלה שמתחילים באות שנבלעת
-        "${gematria(day)} ב$name ${gematria(year)}"
-    }.getOrDefault("")
+        Parts(gematria(day), MONTHS.getOrNull(month) ?: return@runCatching null)
+    }.getOrNull()
 }

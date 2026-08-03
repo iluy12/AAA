@@ -51,12 +51,21 @@ import java.util.Locale
 class WatchFaceActivity : Activity() {
 
     private lateinit var timeText: TextView
-    private lateinit var dateText: TextView
     private lateinit var feedbackText: TextView
     private lateinit var bladeView: View
+    private lateinit var hebDay: TextView
+    private lateinit var hebMonth: TextView
+    private lateinit var gregDay: TextView
+    private lateinit var gregMonth: TextView
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-    private val dateFormat = SimpleDateFormat("EEEE, d בMMMM", Locale("he"))
+    /**
+     * ⚠️ **יום וחודש בנפרד, ובלי שנה.** התצוגה היא מספר גדול עם שם החודש
+     * קטן מתחתיו, ופירוק מחרוזת מוכנה בחזרה לחלקים הוא בדיוק המקום שבו
+     * פורמט נשבר בגרסה הבאה.
+     */
+    private val gregDayFormat = SimpleDateFormat("d", Locale("he"))
+    private val gregMonthFormat = SimpleDateFormat("MMMM", Locale("he"))
 
     private val uiHandler = Handler(Looper.getMainLooper())
 
@@ -151,13 +160,17 @@ class WatchFaceActivity : Activity() {
             // המדידה אין גובה שאפשר למתוח עליו מעבר.
             includeFontPadding = false
         }
-        dateText = TextView(this).apply {
-            textSize = 14f
-            setTextColor(Color.parseColor("#C9A961"))
-            gravity = Gravity.CENTER
-            letterSpacing = 0.06f
-            setPadding(0, 10, 0, 0)
-        }
+        // ⚠️ **שני תאריכים זה לצד זה, בגודל שונה בתוך כל אחד.** נבו:
+        // *"היום העברי גדול, מתחתיו החודש בקטן. לידו הלועזי בגדול, רק
+        // היום, ומתחתיו החודש."* בלי שנה — היא אף פעם לא השאלה שנשאלת
+        // בהצצה על שעון.
+        //
+        // הזהב לעברי והכסף ללועזי אינם קישוט אלא **היררכיה**: העברי הוא
+        // הראשי, הלועזי נספח.
+        hebDay = bigDate("#C9A961")
+        hebMonth = smallDate("#8A6E32")
+        gregDay = bigDate("#C6C6CC")
+        gregMonth = smallDate("#6E6E76")
         feedbackText = TextView(this).apply {
             textSize = 13f
             setTextColor(Color.parseColor("#E4E2DC"))
@@ -182,7 +195,7 @@ class WatchFaceActivity : Activity() {
             )
         })
 
-        column.addView(dateText)
+        column.addView(dateRow())
 
         // ⚠️ **מקום שמור להודעות, גם כשאין הודעה.** בלי זה השעה קופצת
         // למעלה ולמטה בכל פעם שנאמר משהו, וזה מרגיש שבור. הגובה קבוע
@@ -573,15 +586,79 @@ class WatchFaceActivity : Activity() {
 
     // ---------- שעון ----------
 
+    private fun bigDate(colour: String) = TextView(this).apply {
+        textSize = 25f
+        setTextColor(Color.parseColor(colour))
+        gravity = Gravity.CENTER
+        includeFontPadding = false
+    }
+
+    private fun smallDate(colour: String) = TextView(this).apply {
+        textSize = 11f
+        setTextColor(Color.parseColor(colour))
+        gravity = Gravity.CENTER
+        letterSpacing = 0.05f
+        includeFontPadding = false
+        setPadding(0, 3, 0, 0)
+    }
+
+    /**
+     * שתי עמודות תאריך עם קו זהב דק ביניהן.
+     *
+     * ⚠️ **כיוון RTL נקבע במפורש.** בלעדיו הסדר תלוי בהגדרת השפה של
+     * המכשיר — ושעון שהתאריך העברי בו קופץ לצד השני אחרי שינוי הגדרה
+     * הוא בדיוק סוג התקלה שאי-אפשר לשחזר.
+     */
+    private fun dateRow(): View = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER
+        layoutDirection = View.LAYOUT_DIRECTION_RTL
+        val lp = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = 12 }
+        layoutParams = lp
+
+        addView(dateColumn(hebDay, hebMonth))
+
+        // מפריד: קו זהב אנכי שנמוג בקצוות
+        addView(View(this@WatchFaceActivity).apply {
+            layoutParams = LinearLayout.LayoutParams(1, 40).apply {
+                leftMargin = 20; rightMargin = 20
+            }
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(
+                    Color.TRANSPARENT, Color.parseColor("#8A6E32"), Color.TRANSPARENT
+                )
+            )
+        })
+
+        addView(dateColumn(gregDay, gregMonth))
+    }
+
+    private fun dateColumn(big: TextView, small: TextView): View =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            // ⚠️ רוחב אחיד לשתיהן, אחרת "כ״ז" ו-"3" מזיזים את המפריד
+            // ממרכז המסך בכל יום מחדש.
+            layoutParams = LinearLayout.LayoutParams(74, LinearLayout.LayoutParams.WRAP_CONTENT)
+            addView(big)
+            addView(small)
+        }
+
     private fun updateClock() {
         val now = Date()
         timeText.text = timeFormat.format(now)
 
         // ⚠️ **התאריך העברי הוא הראשי, והלועזי נספח אליו.** זה מה שנותן
-        // למסך את האופי — בלעדיו זה שעון גנרי עם עוד שורת טקסט. אם הלוח
-        // העברי לא זמין מסיבה כלשהי, נשארים עם הלועזי בלבד ולא עם כלום.
-        val hebrew = HebrewDate.format(now)
-        dateText.text = if (hebrew.isNotBlank()) hebrew else dateFormat.format(now)
+        // למסך את האופי — בלעדיו זה שעון גנרי עם עוד שורת טקסט.
+        val heb = HebrewDate.parts(now)
+        hebDay.text = heb?.day ?: ""
+        hebMonth.text = heb?.month ?: ""
+
+        gregDay.text = gregDayFormat.format(now)
+        gregMonth.text = gregMonthFormat.format(now)
 
         paintTimeMetal()
         paintBlade()
