@@ -196,6 +196,37 @@ object Baseline {
      * בדיעבד — אי-אפשר לדעת אילו דגימות פגומות — ולכן מחיקה בתחילת האיסוף
      * זולה, ואותה מחיקה בעוד חודש יקרה מאוד.
      */
+    /**
+     * מוחק את הבסיס ובונה אותו מחדש **מהרשומות שכבר נאספו**, לפי הכללים
+     * העדכניים של [isResting].
+     *
+     * ⚠️ **זו האלטרנטיבה ל-[reset], והיא עדיפה עליו כמעט תמיד.** הבסיס
+     * הוא נגזרת של הרשומות ולא מקור עצמאי — הרשומות הגולמיות שמורות
+     * במלואן, ולכן שינוי בהגדרת "מנוחה" אינו מחייב לזרוק שבועות של איסוף
+     * ולהתחיל מאפס. מחיקה הייתה עולה שבועיים של המתנה עד שהתאים יתמלאו
+     * שוב, ובלי שום תמורה.
+     *
+     * ⚠️ רשומות ישנות מלפני שנוספה עמודת התנועה נושאות `motion = -1`,
+     * ולכן הן **נופלות מהבדיקה** ולא נלמדות. זה הצד הבטוח: אי-אפשר לדעת
+     * אם הן היו מנוחה אמיתית, ומוטב לוותר עליהן מאשר להחזיר את הזיהום.
+     */
+    fun rebuildFromRecords(context: Context): Pair<Int, Int> {
+        val records = SampleStore.since(context, 0L)
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
+        var learned = 0
+        for (r in records) {
+            if (isResting(r)) {
+                learn(context, r)
+                learned++
+            }
+        }
+        EventLog.log(
+            context, "INFO",
+            "baseline_rebuilt;records=${records.size};resting=$learned;${describe(context)}"
+        )
+        return learned to records.size
+    }
+
     fun reset(context: Context) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
         EventLog.log(context, "INFO", "baseline_reset")

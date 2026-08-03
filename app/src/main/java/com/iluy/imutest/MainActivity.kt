@@ -261,7 +261,22 @@ class MainActivity : Activity() {
                     }
                 }.start()
             })
-            container.addView(secondaryButton("אפס בסיס דופק") {
+            // ⚠️ **זה הכפתור הנכון אחרי שינוי בהגדרת "מנוחה", לא זה שמתחתיו.**
+            // הבסיס נגזר מהרשומות, והן שמורות — ולכן אפשר לתקן אותו בלי
+            // לזרוק את האיסוף. הכפתור שמתחת מוחק גם את הרשומות, כלומר גם
+            // את הנפילות המתועדות, וזה בלתי-הפיך.
+            container.addView(secondaryButton("בנה מחדש בסיס דופק (שומר נתונים)") {
+                val (learned, total) = Baseline.rebuildFromRecords(this)
+                logDisplay?.apply {
+                    text = "נבנה מחדש מ-$total רשומות שמורות.\n" +
+                        "$learned נחשבו מנוחה לפי הכללים החדשים.\n\n" +
+                        Baseline.describe(this@MainActivity)
+                    visibility = android.view.View.VISIBLE
+                }
+            })
+            // ⚠️ השם אומר "בסיס" אבל הוא מוחק **גם את כל הרשומות**, וזה מה
+            // שגורם ללחוץ עליו בטעות. השם תוקן כדי שיהיה ברור מה הולך לאיבוד.
+            container.addView(secondaryButton("מחק הכל והתחל מאפס ⚠") {
                 Baseline.reset(this)
                 SampleStore.clear(this)
                 logDisplay?.apply {
