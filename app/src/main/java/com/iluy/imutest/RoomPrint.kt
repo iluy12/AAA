@@ -72,10 +72,39 @@ object RoomPrint {
      * ⚠️ ובמכשיר הזה כבר התברר שהדלקת מקלט מפריעה לחיישנים אחרים, ולכן
      * אין קריאה עצמאית כאן.
      */
+    /** ⚠️ מווסת: שורה אחת לרבע שעה לכל היותר. ראו את ההסבר ב-[capture]. */
+    private var lastReportMs = 0L
+
+    private fun report(context: Context, detail: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastReportMs < 15 * 60 * 1000L) return
+        lastReportMs = now
+        EventLog.log(context, "ROOM", detail)
+    }
+
     fun capture(context: Context, magnitude: Int): Print? {
         val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
-        val scans = runCatching { wm?.scanResults }.getOrNull().orEmpty()
+        // ⚠️ **הכישלון נרשם ולא נבלע.** `runCatching` כאן החזיר רשימה
+        // ריקה גם כשההרשאה הייתה חסרה לגמרי — תוצאה שזהה בדיוק ל"אין
+        // רשתות בסביבה". במשך שבועות חשבנו שהבעיה היא WiFi כבוי בשעון,
+        // בזמן שהקוד לא היה מסוגל לסרוק גם אילו היה דלוק.
+        //
+        // אין הבדל בין "בדקתי ואין" לבין "לא הצלחתי לבדוק", וזה בדיוק
+        // ההבדל שקובע אם יש כאן באג.
+        val scans = runCatching { wm?.scanResults }
+            .onFailure { report(context, "scan_failed;${it.javaClass.simpleName}") }
+            .getOrNull().orEmpty()
         val wifi = scans.associate { it.BSSID.hashCode() to it.level }
+
+        // ⚠️ **רק כשאין רשתות, ולא בכל קריאה.** הפונקציה רצה בכל מדידה —
+        // כלומר עד שלוש פעמים כל שתי דקות — והלוג מוגבל ל-500 שורות.
+        // רישום בכל קריאה היה דוחק החוצה בדיוק את מה שבאנו לחקור.
+        //
+        // ומה שמעניין הוא המקרה הריק: `wifi_enabled` מבדיל בין "המשתמש
+        // כיבה WiFi" לבין "סרקנו ולא מצאנו", ואלה שתי מסקנות שונות.
+        if (wifi.isEmpty()) {
+            report(context, "no_networks;wifi_enabled=${wm?.isWifiEnabled}")
+        }
         if (wifi.isEmpty() && magnitude <= 0) return null
         return Print(wifi, magnitude)
     }
