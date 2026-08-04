@@ -138,11 +138,12 @@ class StatusActivity : Activity() {
 
         // ⚠️ בתחתית ובקטן בכוונה — ראו הערת-המחלקה.
         sb.append("── ציון ──\n")
-        if (last.blocked.isNotBlank()) {
-            sb.append("נחסם:  ${last.blocked}\n")
-        } else {
-            sb.append("${last.score} מתוך ${last.available}\n")
-        }
+        // ⚠️ **הציון מוצג גם כששער חסם.** הוא נחשב עכשיו תמיד, וזו כל
+        // הנקודה: "נחסם" לבדו לא מאפשר לדעת אם הגלאי צדק והשער עצר אותו,
+        // או שגם הגלאי לא ראה כלום. שתי מסקנות הפוכות שנראו זהות.
+        sb.append("${last.score} מתוך ${last.available}\n")
+        if (last.blocked.isNotBlank()) sb.append("נחסם:  ${last.blocked}\n")
+        if (last.baselineSource.isNotBlank()) sb.append("בסיס:  ${last.baselineSource}\n")
         if (last.nearReport.isNotBlank()) sb.append("סמוך לדיווח:  ${last.nearReport}\n")
 
         return sb.toString()

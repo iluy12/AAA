@@ -767,9 +767,14 @@ class TapDetectorService : Service(), SensorEventListener {
         // בכלל אינם ניתנים לשחזור בדיעבד, ולכן אם לא נשמרו כאן הם אבודים.
         val risk = RiskScore.evaluate(this, record)
         val scored = record.copy(
-            score = if (risk.gatesPassed) risk.score else -1,
-            available = if (risk.gatesPassed) risk.available else -1,
+            // ⚠️ **הציון נשמר תמיד, גם כששער חסם.** קודם נשמר -1 —
+            // ואז "כמה דקות לפני השיא היינו מזהים" נמדד על רשומות שרובן
+            // ריקות, כלומר מודדים את השערים ולא את הגלאי. `blocked` הוא
+            // עמודה נפרדת בדיוק בשביל להפריד בין השניים.
+            score = risk.score,
+            available = risk.available,
             blocked = risk.blockedBy ?: "",
+            baselineSource = risk.baselineSource,
             placeMeters = PlaceTracker.distanceFromUsual(this),
             knownPlace = RoomPrint.capture(this, LastMagnitude.value)
                 ?.let { RoomPrint.matchesKnownFallPlace(this, it) }

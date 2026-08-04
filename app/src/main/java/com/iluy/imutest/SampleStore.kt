@@ -143,7 +143,16 @@ object SampleStore {
          * אמיתי של יד שנחה ואז זזה נראה ככה. **המספר הזה הוא ההבדל בין
          * שתי התשובות**, והוא לא נשמר עד עכשיו.
          */
-        val accelCount: Int = -1
+        val accelCount: Int = -1,
+        /**
+         * מאיזו דרגה בסולם הגיע הבסיס להשוואה.
+         *
+         * ⚠️ **`all` פירושו שהושווינו לממוצע כל השעות ביחד** — בדיוק מה
+         * שהמערכת נבנתה כדי לא לעשות. בלי העמודה הזו, ציון כזה נראה
+         * בניתוח זהה לחלוטין לציון שנשען על תא שעתי מלא, ואי-אפשר לדעת
+         * אילו מהמסקנות שלנו נשענו על אוויר.
+         */
+        val baselineSource: String = ""
     )
 
     fun append(context: Context, r: Record) {
@@ -170,7 +179,8 @@ object SampleStore {
             r.placeMeters,
             r.knownPlace,
             r.nearReport,
-            r.accelCount
+            r.accelCount,
+            r.baselineSource
         ).joinToString(",")
 
         val file = File(context.filesDir, FILE_NAME)
@@ -271,7 +281,7 @@ object SampleStore {
     const val CSV_HEADER =
         "time,hour,bpm,samples,first_ms,steps,still_ms,battery,no_contact," +
             "grav_x,grav_y,grav_z,motion,bpm_min,bpm_max,bpm_trend," +
-            "score,available,blocked,place_m,known_place,near_report,accel_n"
+            "score,available,blocked,place_m,known_place,near_report,accel_n,base_src"
 
     /**
      * כל הרשומות כטקסט אחד, עם כותרות.
@@ -328,7 +338,8 @@ object SampleStore {
                 placeMeters = if (p.size > 19) (p[19].toIntOrNull() ?: -1) else -1,
                 knownPlace = if (p.size > 20) (p[20].toIntOrNull() ?: -1) else -1,
                 nearReport = if (p.size > 21) p[21] else "",
-                accelCount = if (p.size > 22) (p[22].toIntOrNull() ?: -1) else -1
+                accelCount = if (p.size > 22) (p[22].toIntOrNull() ?: -1) else -1,
+                baselineSource = if (p.size > 23) p[23] else ""
             )
         } catch (e: Exception) {
             null

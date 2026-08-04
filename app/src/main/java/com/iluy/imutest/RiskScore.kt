@@ -90,7 +90,16 @@ object RiskScore {
         val blockedBy: String?,
         val score: Int,
         val available: Int,
-        val parts: String
+        val parts: String,
+        /**
+         * מאיזו דרגה בסולם הגיע הבסיס: `hour` / `block` / `all` / `none`.
+         *
+         * ⚠️ **בלי זה, ציון שנשען על "ממוצע כל השעות" נראה בניתוח בדיוק
+         * כמו ציון שנשען על תא שעתי מלא.** הערך נרשם ללוג האירועים כבר
+         * היום, אבל הלוג מוגבל ל-500 שורות — ואילו הניתוח שמצב-הצל קיים
+         * בשבילו רץ על אלפי רשומות מהייצוא.
+         */
+        val baselineSource: String = "none"
     )
 
     /**
@@ -98,9 +107,19 @@ object RiskScore {
      * לדעת **איזה** שער עצר — בלי זה "לא הוצע" הוא תיבה שחורה.
      */
     fun evaluate(context: Context, r: SampleStore.Record): Result {
-        gateBlock(context, r)?.let {
-            return Result(false, it, 0, 0, "")
-        }
+        // ⚠️ **השער נבדק, אבל החישוב ממשיך בכל מקרה.**
+        //
+        // עד היום הייתה כאן יציאה מוקדמת: שער שנסגר החזיר `score = 0`
+        // ו-`available = 0` בלי לחשב כלום. כלומר הציון לא "לא נרשם" —
+        // הוא **לא היה קיים**.
+        //
+        // ומכאן שכל שאלה על איכות הגלאי לא ניתנת למענה: "כמה דקות לפני
+        // השיא היינו מזהים" נמדד על רשומות שרובן חסומות, ומה שהיינו
+        // מודדים בפועל הוא **את השערים ולא את הגלאי**.
+        //
+        // מצב-צל אמור לצלם הכל. במקום זה הוא הפסיק לחשוב בדיוק ברגע
+        // שהחליט לשתוק — וזה הדפוס שחוזר כאן: כישלון שנרשם כהיעדר.
+        val blocked = gateBlock(context, r)
 
         val parts = StringBuilder()
         var score = 0
@@ -199,7 +218,14 @@ object RiskScore {
                 ?.let { RoomPrint.matchesKnownFallPlace(context, it) }
         )
 
-        return Result(true, null, score, available, parts.toString().trimEnd(','))
+        return Result(
+            gatesPassed = blocked == null,
+            blockedBy = blocked,
+            score = score,
+            available = available,
+            parts = parts.toString().trimEnd(','),
+            baselineSource = level?.source ?: "none"
+        )
     }
 
     /** עולה מ-0 ל-1 בין שני גבולות. מתחת לתחתון — אפס, מעל העליון — אחד. */
