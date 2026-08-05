@@ -49,8 +49,18 @@ object ScreenWakeWatcher {
             override fun onReceive(c: Context?, intent: Intent?) {
                 when (intent?.action) {
                     Intent.ACTION_SCREEN_ON -> onScreenOn(appContext)
-                    Intent.ACTION_SCREEN_OFF ->
+                    Intent.ACTION_SCREEN_OFF -> {
+                        // ⚠️ **המסך הוא הצרכן הגדול ביותר, והיחיד שלא
+                        // בשליטתנו.** מדידת הסוללה של 3.8 יצאה 5.2%
+                        // לשעה מול 3.3% בלילה — וההפרש כולו היה הדלקות
+                        // מסך בזמן בדיקות. בלי לספור שניות מסך, כל
+                        // מדידת סוללה עתידית תערבב שימוש עם צריכה.
+                        onElapsedMs?.let {
+                            PowerLog.addScreenMs(appContext, SystemClock.elapsedRealtime() - it)
+                        }
+                        onElapsedMs = null
                         EventLog.log(appContext, "DEBUG", "screen;state=off")
+                    }
                 }
             }
         }
@@ -64,8 +74,12 @@ object ScreenWakeWatcher {
         EventLog.log(context, "INFO", "screen_watch_started")
     }
 
+    /** מתי המסך נדלק, לחישוב משך. ראו PowerLog. */
+    private var onElapsedMs: Long? = null
+
     private fun onScreenOn(context: Context) {
         val now = SystemClock.elapsedRealtime()
+        onElapsedMs = now
         val gap = lastOnElapsedMs?.let { now - it }
         lastOnElapsedMs = now
         val double = gap != null && gap <= DOUBLE_WINDOW_MS

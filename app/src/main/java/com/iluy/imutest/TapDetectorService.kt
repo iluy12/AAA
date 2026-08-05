@@ -854,6 +854,12 @@ class TapDetectorService : Service(), SensorEventListener {
 
         persistBurst(firstMs)
 
+        // ⚠️ נתלה על הפרץ ולא על אזעקה משלו — אזעקה נוספת הייתה מעירה
+        // את המעבד רק כדי לרשום כמה סוללה נשארה, כלומר המדידה הייתה
+        // משנה את מה שהיא מודדת.
+        PowerLog.countBurst(this)
+        readBattery().let { (level, charging) -> PowerLog.tick(this, level, charging) }
+
         runCatching { burstWakeLock?.let { if (it.isHeld) it.release() } }
         burstWakeLock = null
 

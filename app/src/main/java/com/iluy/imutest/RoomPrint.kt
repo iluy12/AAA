@@ -104,6 +104,12 @@ object RoomPrint {
         // כיבה WiFi" לבין "סרקנו ולא מצאנו", ואלה שתי מסקנות שונות.
         if (wifi.isEmpty()) {
             report(context, "no_networks;wifi_enabled=${wm?.isWifiEnabled}")
+        } else {
+            // ⚠️ **קליטה, לא סריקה.** אנחנו קוראים `scanResults` בלבד
+            // ואף פעם לא קוראים ל-`startScan` — כלומר נטפלים על סריקות
+            // שהמערכת עושה ממילא, והעלות שלנו אפסית. המחיר האמיתי הוא
+            // אחר: **הטריות אינה בשליטתנו.**
+            PowerLog.countWifiHit(context)
         }
         if (wifi.isEmpty() && magnitude <= 0) return null
         return Print(wifi, magnitude)
