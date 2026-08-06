@@ -44,6 +44,9 @@ class QuestionnaireActivity : Activity() {
     private val totalSteps = 12
 
     companion object {
+
+        private const val REQUEST_RECORD_AUDIO = 601
+
         /**
          * טווחי שעתיים לאורך כל היממה.
          *
@@ -84,9 +87,6 @@ class QuestionnaireActivity : Activity() {
     private var practiceLastStrokeDirection = 0
     private var practiceLastStrokeMs = 0L
 
-    companion object {
-        private const val REQUEST_RECORD_AUDIO = 601
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
