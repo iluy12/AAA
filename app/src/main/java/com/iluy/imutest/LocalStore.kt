@@ -159,9 +159,7 @@ object LocalStore {
     const val KEY_Q2_FREQUENCY = "q2_frequency"
     const val KEY_Q3_PLACE = "q3_place"
     const val KEY_Q3_POSITION = "q3_position"
-    const val KEY_Q4_MOODS = "q4_moods"
     const val KEY_Q5_HELPS = "q5_helps"
-    const val KEY_Q6_DURATION = "q6_duration"
     const val KEY_Q7_CONSENT_CALL = "q7_consent_call"
     const val KEY_Q8_CONSENT_MESSAGE = "q8_consent_message"
     const val KEY_Q10_REFUSALS = "q10_refusals_before_fall"
@@ -175,6 +173,28 @@ object LocalStore {
      * גנריים — ומשפט גנרי נשחק תוך שבוע.
      */
     const val KEY_Q11_LONGEST_STREAK = "q11_longest_streak_days"
+
+    /**
+     * הטווח שסימן כעיקרי, מתוך אלה שסימן ב-[KEY_Q1_TIMES].
+     *
+     * ⚠️ **בלעדיו יש כיסוי בלי סדר עדיפויות.** תקציב החלונות החמים הוא
+     * 3-4 ביום, ומי שסימן חמישה טווחים ישרוף אותו לפני שהגיע לטווח
+     * שבאמת מסוכן אצלו. זה הנתון שקובע מה משוריין.
+     */
+    const val KEY_Q1_PRIMARY_HOUR = "q1_primary_hour"
+
+    /** כמה זמן שקט קודם לאירוע. ממופה ישירות ל-`stillMs`. */
+    const val KEY_Q12_QUIET_BEFORE = "q12_quiet_before"
+
+    /**
+     * הרגלים שמעלים דופק ורלוונטיים לאדם הזה.
+     *
+     * ⚠️ **לא "מה מעלה לך את הדופק".** המטרה היחידה היא לדעת אילו
+     * כפתורים להציג במסך הווידוא — כלומר **לקצר** אותו. רשימה של 12
+     * אפשרויות ברגע מתוח פירושה שהוא לא עונה, ומספר התוויות הוא
+     * הצוואר האמיתי.
+     */
+    const val KEY_Q6_HABITS = "q6_habits"
 
     private const val KEY_Q_DONE = "questionnaire_done"
     private const val KEY_TAP_STANDBY_UNTIL = "tap_standby_until"

@@ -51,18 +51,35 @@ object RiskContext {
         return 0.0
     }
 
-    fun hourMatchesDeclared(context: Context, hourOfDay: Int): Boolean {
-        val declared = LocalStore.getMultiChoice(context, LocalStore.KEY_Q1_TIMES)
-        if (declared.isEmpty()) return false
-        return declared.any { label ->
-            when (label.trim()) {
-                "בוקר" -> hourOfDay in 5..11
-                "צהריים" -> hourOfDay in 12..17
-                "ערב" -> hourOfDay in 18..21
-                "לילה" -> hourOfDay >= 22 || hourOfDay <= 4
-                else -> false
-            }
-        }
+    fun hourMatchesDeclared(context: Context, hourOfDay: Int): Boolean =
+        LocalStore.getMultiChoice(context, LocalStore.KEY_Q1_TIMES)
+            .any { inRange(it, hourOfDay) }
+
+    /**
+     * האם השעה נופלת בטווח שסומן כ**עיקרי**.
+     *
+     * ⚠️ **זה הנתון ששומר חלון.** תקציב הדגימה הצפופה הוא 3-4 ביום, ומי
+     * שסימן חמישה טווחים ישרוף אותו לפני שהגיע לזה שבאמת מסוכן אצלו.
+     * בלי הבחנה בין "סימן" ל"סימן כעיקרי" אין דרך להכריע מה משוריין.
+     */
+    fun isPrimaryHour(context: Context, hourOfDay: Int): Boolean =
+        inRange(LocalStore.getSingleChoice(context, LocalStore.KEY_Q1_PRIMARY_HOUR), hourOfDay)
+
+    /**
+     * מפרסר `"20-22"`.
+     *
+     * ⚠️ **חוצה חצות מטופל במפורש.** `"22-00"` הוא 22 ו-23, ו-`"00-02"`
+     * הוא 0 ו-1. השוואה נאיבית `h in 22..0` מחזירה false תמיד ובשקט —
+     * כלומר הטווח הלילי, שהוא בדיוק המסוכן, היה כבוי בלי שום סימן.
+     */
+    private fun inRange(label: String, hourOfDay: Int): Boolean {
+        val p = label.trim().split("-")
+        if (p.size != 2) return false
+        val from = p[0].toIntOrNull() ?: return false
+        val to = p[1].toIntOrNull() ?: return false
+        val end = if (to == 0) 24 else to
+        return if (from < end) hourOfDay in from until end
+        else hourOfDay >= from || hourOfDay < end
     }
 
     /**
