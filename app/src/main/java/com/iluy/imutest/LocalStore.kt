@@ -91,15 +91,25 @@ object LocalStore {
      * **רצפה של 3** גם למי שדיווח פחות: מי שענה "פעם אחת" היה מקבל מסך
      * כבר בהתגברות הראשונה, וזה מציף במקום לעזור.
      */
+    /**
+     * ⚠️ **נקרא כמספר, וקודם לא.**
+     *
+     * השאלה הייתה פעם בחירה מטקסט ("פעם אחת", "2-3", "4-5"), והפרסור
+     * כאן התאים לזה. מאז היא הפכה לבורר מספרים שכותב `"5"` — והפרסור
+     * הישן נשאר:
+     *
+     * | נענה | נקרא |
+     * |---|---|
+     * | 4 | 5 |
+     * | 5 | 3 |
+     * | 8 | 3 |
+     *
+     * כלומר **המספר שהמשתמש הזין כמעט לא השפיע**, וזה הנתון שקובע מתי
+     * המערכת מציעה מלווה. וכמו כל השאר כאן — הכישלון היה שקט: `else`
+     * החזיר ערך סביר לגמרי.
+     */
     fun getPersonalThreshold(context: Context): Int {
-        val answer = getSingleChoice(context, KEY_Q10_REFUSALS)
-        val reported = when {
-            answer.startsWith("פעם אחת") -> 1
-            answer.startsWith("2") -> 3
-            answer.startsWith("4") -> 5
-            answer.startsWith("6") -> 6
-            else -> 3
-        }
+        val reported = getSingleChoice(context, KEY_Q10_REFUSALS).trim().toIntOrNull() ?: 0
         return maxOf(reported, MIN_PERSONAL_THRESHOLD)
     }
 
