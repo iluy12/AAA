@@ -29,9 +29,19 @@ import java.io.File
 class QuestionnaireActivity : Activity() {
 
     private var step = 0
-    // 11 ולא 10 — נוספה שאלת הרצף הארוך ביותר. ⚠️ מי שמשנה כאן חייב
-    // להוסיף גם ענף ב-when של renderStep, אחרת השלב האחרון יציג מסך ריק.
-    private val totalSteps = 11
+    /**
+     * ⚠️ **המספר הזה וה-`when` ב-[renderStep] חייבים להתאים, ואי-התאמה
+     * לא מתפוצצת — היא מציגה מסך ריק.**
+     *
+     * וזה כבר קרה: כשנוספה שאלת השעה העיקרית היא קיבלה את המספר 1,
+     * שכבר היה תפוס על ידי שאלת התדירות — **ושאלת התדירות הפכה לבלתי
+     * נגישה בשקט.** המשתמש היה עובר עליה בלי לדעת, והמערכת הייתה מקבלת
+     * מרווח נפילות ריק.
+     *
+     * הסדר: שעות ← עיקרית ← תדירות ← מקום ← תנוחה ← שקט לפני ← מה עוזר
+     * ← הרגלים ← שתי הסכמות ← סף סירובים ← רצף ארוך.
+     */
+    private val totalSteps = 12
 
     companion object {
         /**
@@ -127,12 +137,6 @@ class QuestionnaireActivity : Activity() {
             // ⚠️ "כל כמה זמן" הוחלף ב"כמה פעמים בחודש האחרון" — שאלה על
             // מספר שקרה בפועל קלה לזכור מהערכת תדירות, והיא גם מה שהאלגוריתם
             // באמת צריך: מרווח ממוצע בימים.
-            1 -> renderNumber(
-                container, "בחודש האחרון, כמה פעמים נפלת?",
-                LocalStore.KEY_Q2_FREQUENCY,
-                shortcuts = listOf(1, 2, 4, 8, 15),
-                suffix = "פעמים"
-            )
             // ⚠️ **מבין הטווחים שסימן — איזה הכי הרבה.** בלי זה יש לנו
             // כיסוי בלי סדר עדיפויות, וכשהתקציב היומי נגמר אין דרך לדעת
             // איזה חלון לשריין. מוצג רק מה שהוא סימן, כדי שהשאלה תהיה
@@ -146,12 +150,21 @@ class QuestionnaireActivity : Activity() {
             // על ידי שום דבר במערכת — הוא לא ניתן להצלבה עם מה שהשעון
             // רואה. שם של חדר כן: הוא הופך את הטביעה מ"מקום 3" ל"חדר
             // השינה", וזה גם מה שמאפשר להסביר החלטה למשתמש.
-            2 -> renderMultiChoice(
+            // ⚠️ "כל כמה זמן" הוחלף ב"כמה פעמים בחודש האחרון" — שאלה על
+            // מספר שקרה בפועל קלה לזכור מהערכת תדירות, והיא גם מה
+            // שהאלגוריתם באמת צריך: מרווח ממוצע בימים.
+            2 -> renderNumber(
+                container, "בחודש האחרון, כמה פעמים נפלת?",
+                LocalStore.KEY_Q2_FREQUENCY,
+                shortcuts = listOf(1, 2, 4, 8, 15),
+                suffix = "פעמים"
+            )
+            3 -> renderMultiChoice(
                 container, "איפה זה בד\"כ קורה? (אפשר לסמן כמה)",
                 listOf("חדר שינה", "סלון", "שירותים", "מקלחת", "מחוץ לבית"),
                 LocalStore.KEY_Q3_PLACE
             )
-            3 -> renderMultiChoice(
+            4 -> renderMultiChoice(
                 container, "באיזו תנוחה בד\"כ? (בחירה מרובה)",
                 listOf("יושב", "שוכב", "עומד"),
                 LocalStore.KEY_Q3_POSITION
@@ -163,12 +176,12 @@ class QuestionnaireActivity : Activity() {
             // לראות.** מתח ובדידות אינם ניתנים לזיהוי בשום צורה, ולכן
             // כשאלה בשאלון הם מייצרים נתון שההדק לא יכול להשתמש בו.
             // כדיווח בזמן אמת הם שווים הרבה — ושם מקומם, במסך הווידוא.
-            4 -> renderSingleChoice(
+            5 -> renderSingleChoice(
                 container, "כמה זמן אתה בד\"כ לבד ובשקט לפני שזה קורה?",
                 listOf("מיד", "אחרי כמה דקות", "אחרי חצי שעה ויותר"),
                 LocalStore.KEY_Q12_QUIET_BEFORE
             )
-            5 -> renderMultiChoice(
+            6 -> renderMultiChoice(
                 container, "מה עוזר לך לצאת מזה? (בחירה מרובה)",
                 listOf("הליכה קצרה", "שתיית מים", "שיחה עם חבר", "תפילה", "לימוד", "מוזיקה", "נשימות עמוקות", "יציאה מהחדר"),
                 LocalStore.KEY_Q5_HELPS
@@ -182,22 +195,22 @@ class QuestionnaireActivity : Activity() {
             // מה שכן שווה: לדעת מראש אילו הסברים בכלל רלוונטיים לאדם
             // הזה, כדי **לקצר** את מסך הווידוא במקום להאריך אותו. רשימה
             // של 12 אפשרויות ברגע מתוח = הוא לא עונה.
-            6 -> renderMultiChoice(
+            7 -> renderMultiChoice(
                 container, "מה מהבאים רלוונטי אצלך?",
                 listOf("שותה קפה", "מעשן", "לוקח תרופה קבועה"),
                 LocalStore.KEY_Q6_HABITS
             )
-            7 -> renderConsent(
+            8 -> renderConsent(
                 container, "בסדר שאתקשר מדי פעם?",
                 LocalStore.KEY_Q7_CONSENT_CALL
             )
-            8 -> renderConsent(
+            9 -> renderConsent(
                 container, "בסדר שאשלח הודעה מדי פעם?",
                 LocalStore.KEY_Q8_CONSENT_MESSAGE
             )
             // הנתון שקובע מתי המערכת מציעה חיזוק מורחב. מחליף סף שהומצא
             // ("שנייה בשעה") בסף שיש לו משמעות אצל האדם הזה.
-            9 -> renderNumber(
+            10 -> renderNumber(
                 container, "כשהיצר בא אליך, כמה פעמים אתה מצליח להגיד \"לא\" לפני שקורה משהו?",
                 LocalStore.KEY_Q10_REFUSALS,
                 shortcuts = listOf(1, 2, 3, 5, 8),
@@ -206,7 +219,7 @@ class QuestionnaireActivity : Activity() {
             // ⚠️ נקודת הייחוס האישית. בלעדיה המערכת לא יודעת אם רצף של
             // שבועיים הוא שיא או שגרה — וזה משנה גם את הזיהוי וגם, ובעיקר,
             // את מה שהיא אומרת לו.
-            10 -> renderNumber(
+            11 -> renderNumber(
                 container, "מה הכי הרבה ימים שהחזקת נקי?",
                 LocalStore.KEY_Q11_LONGEST_STREAK,
                 shortcuts = listOf(7, 14, 30, 60, 90),
