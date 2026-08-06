@@ -131,7 +131,13 @@ object DataSanity {
         val withSamples = records.filter { it.samples > 0 }
         if (withSamples.size >= MIN_RECORDS) {
             val mode = withSamples.groupingBy { it.samples }.eachCount().maxByOrNull { it.value }
-            if (mode != null && mode.value * 100 / withSamples.size >= 70) {
+            // ⚠️ **גם זו הפכה להתראת שווא.** היא נולדה כש-67 דגימות חזרו
+            // שוב ושוב, ו-67 היה סימן לחלון קטוע. עכשיו 141 חוזר שוב
+            // ושוב — וזה **הערך הנכון** לחלון מלא ב-3.15 דגימות בשנייה.
+            //
+            // מספר קבוע הוא חשוד רק כשהוא **נמוך** מהצפוי. קבוע וגבוה
+            // פירושו שהחיישן מספק בדיוק את מה שביקשנו.
+            if (mode != null && mode.key < 120 && mode.value * 100 / withSamples.size >= 70) {
                 out.add(
                     Finding(
                         Level.WARN, "samples_constant",
@@ -201,13 +207,25 @@ object DataSanity {
         val warmups = records.filter { it.firstSampleMs >= 0 }.map { it.firstSampleMs }
         if (warmups.size >= MIN_RECORDS) {
             val median = warmups.sorted()[warmups.size / 2]
-            if (median > 10_000L) {
+            // ⚠️ **הבדיקה הזו הפכה להתראת שווא, וזה בדיוק מה שהיא נועדה
+            // למנוע.** היא נכתבה כשהחלון היה 45 שניות קבועות והחימום אכל
+            // מהן; מאז הפרץ מוארך לפי החימום, ולכן 23 שניות המתנה כבר לא
+            // עולות בנתונים — `samples` עלה מ-67 ל-141.
+            //
+            // הסימן שמבדיל: **מספר הדגימות בפועל.** חימום ארוך עם 141
+            // דגימות פירושו שהתיקון עובד; חימום ארוך עם 67 פירושו שהוא
+            // נשבר. בלי התנאי הזה הכלי צועק על מכשיר תקין — וכלי שצועק
+            // לשווא מפסיקים לקרוא.
+            val medianSamples = withSamples
+                .map { it.samples }.sorted()
+                .getOrElse(withSamples.size / 2) { 0 }
+            if (median > 10_000L && medianSamples < 120) {
                 out.add(
                     Finding(
                         Level.ERROR, "burst_eaten_by_warmup",
-                        "החיישן האופטי לוקח ${median / 1000} שניות עד הדגימה " +
-                            "הראשונה. מתוך 45 שניות נשארות רק " +
-                            "${(45_000L - median) / 1000} של נתונים אמיתיים."
+                        "החיישן לוקח ${median / 1000} שניות עד הדגימה הראשונה, " +
+                            "והפרץ לא מתארך לפצות: רק $medianSamples דגימות " +
+                            "במקום כ-140."
                     )
                 )
             }
