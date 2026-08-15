@@ -17,6 +17,7 @@ import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import java.io.File
@@ -111,6 +112,37 @@ class QuestionnaireActivity : Activity() {
             setTextColor(ContextCompat.getColor(context, R.color.text_tertiary))
             gravity = Gravity.CENTER
         })
+
+        // ⚠️ **רק בשלב הראשון, ורק במצב בדיקה.** נבו: "לא אוכל להגיע
+        // לאיפוס הנתונים לפני מילוי השאלון אם הוא מתאפס." "מלא שאלון
+        // מחדש" מסמן questionnaire_done=false ומיד מפנה לכאן — ומהמסך
+        // הזה **אין דרך חזרה** למסך הפיתוח עד שכל 12 השלבים נגמרים.
+        // כלומר בין הרגע שהבסיס-לפי-מצב עלה (בילד 132) לרגע שהשאלון
+        // נגמר, אין שום דרך לבנות מחדש את הבסיס — בדיוק מה שצריך
+        // לעשות **לפני** שממלאים, כי הוא מה שמפעיל את מסך הכיול.
+        //
+        // הכפתור מופיע רק בשלב 0 כדי לא להיראות בכל שלב, וגדור מאחורי
+        // DebugConfig כמו כל כפתור פיתוח אחר — משתמש אמיתי בהתקנה
+        // הסופית לא אמור לראות אותו במסך ההיכרות הראשון שלו.
+        if (step == 0 && DebugConfig.DEBUG_TAG_ENABLED) {
+            container.addView(Button(this).apply {
+                text = "בנה מחדש בסיס דופק (שומר נתונים)"
+                textSize = 11f
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                lp.topMargin = 10
+                layoutParams = lp
+                setOnClickListener {
+                    val (learned, total) = Baseline.rebuildFromRecords(this@QuestionnaireActivity)
+                    Toast.makeText(
+                        this@QuestionnaireActivity,
+                        "נבנה מ-$total רשומות, $learned נכנסו לבסיס",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            })
+        }
 
         when (step) {
             // ⚠️ **השאלה החשובה ביותר במוצר בשבוע הראשון.**
