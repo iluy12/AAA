@@ -3,7 +3,22 @@ package com.iluy.imutest
 import android.content.Context
 
 /**
- * הבסיס האישי: מה נורמלי **אצל המשתמש הזה**, בפילוח לפי שעה ביום.
+ * הבסיס האישי: מה נורמלי **אצל המשתמש הזה**, בפילוח לפי מצב ולא לפי שעה.
+ *
+ * ## ⚠️ למה זה השתנה מפילוח-לפי-שעה, וזה נמדד לא נוחש
+ *
+ * הפילוח המקורי היה 24 תאים שעתיים. ב-2026-08-06 נמדד ישירות למה זה
+ * נכשל: אותה שעה (06:00), שלושה ימים — פעם ער (חציון 86-96) ופעם ישן
+ * עמוק (חציון 57, מינימום 48). **השעון לא שומר לוח זמנים קבוע**, כי
+ * לוח הזמנים של המשתמש עצמו לא קבוע — הוא נרדם ב-4:30.
+ *
+ * מה שכן הפריד מושלם, מאותה מדידה: `still_ms`. מעל 30 דקות שקט —
+ * 27 מתוך 27 רשומות היו שינה. מתחת — 0 מתוך 47. לכן הפילוח עבר
+ * ל[isProlongedStill] במקום לשעון הקיר.
+ *
+ * ותוצר לוואי חיובי: תא שעתי בודד דורש 20 דגימות ומתמלא באיטיות
+ * (0/24 אחרי שבוע). מאגר אחד מאוחד קיבל 454 דגימות באותם שישה ימים —
+ * זמינות מהיום הראשון, לא מהחודש השני.
  *
  * ## למה אישי ולא סף אחיד — וזו לא קפריזה
  *
@@ -63,11 +78,24 @@ object Baseline {
     const val REST_MAX_MOTION = 25
 
     /**
-     * מינימום דגימות-מנוחה בתא שעתי לפני שהוא שמיש.
+     * שקט רציף מעל זה נחשב שינה — או מצב תפקודי זהה לה — ולא נכנס
+     * לבסיס-הערות בכלל.
      *
-     * ⚠️ 20 ולא 5. שבוע נותן כ-7 קריאות מנוחה לתא שעתי בלבד, וחציון על 7
-     * רועש מדי מכדי להשוות אליו. לכן יש [levelFor] — נפילה-חזרה לתא גס
-     * יותר במקום להשוות למשהו שאינו יציב.
+     * ⚠️ **נמדד, לא הוערך.** 30 דקות הפרידו מושלם בין ער לישן ב-6.8
+     * (ראו הערת-המחלקה). ⚠️ **וזה מוגדר לפי מצב, לא לפי שעון** בכוונה:
+     * מי שיושב בלי לזוז 40 דקות בצהריים — עמוק בעבודה, או נרדם על
+     * הכיסא — מקבל אותה התייחסות כמו שינה בלילה. זו לא טעות; זה בדיוק
+     * "לפי מצב ולא לפי שעה" שהוביל לתיקון הזה מלכתחילה.
+     */
+    const val PROLONGED_STILL_MS = 30 * 60 * 1000L
+
+    /**
+     * מינימום דגימות-מנוחה במאגר לפני שהוא שמיש.
+     *
+     * ⚠️ 20 נשאר כפי שהיה, אבל המשמעות שלו השתנתה: קודם זה היה סף
+     * לתא שעתי אחד (שהתמלא באיטיות רבה); עכשיו זה סף למאגר-ערות אחד
+     * מאוחד, שכבר קיבל 454 דגימות בשישה ימים. הרצפה נשארה זהה כי אין
+     * סיבה חדשה לשנות אותה — פשוט קל בהרבה להגיע אליה.
      */
     const val MIN_SAMPLES_PER_BUCKET = 20
 
@@ -87,6 +115,10 @@ object Baseline {
     /** כמה קריאות שומרים לכל תא. מספיק לחציון יציב, וזניח בנפח. */
     private const val KEEP_PER_BUCKET = 120
 
+    /** האם הרשומה נמצאת בשקט ממושך — שינה, או מצב זהה לה תפקודית. */
+    fun isProlongedStill(r: SampleStore.Record): Boolean =
+        r.stillMs >= PROLONGED_STILL_MS
+
     /**
      * האם הרשומה מתאימה ללמידת הבסיס. ראו הערת-ההרעלה במחלקה.
      */
@@ -95,6 +127,10 @@ object Baseline {
             r.samples >= MIN_SAMPLES_IN_BURST &&
             r.steps == 0 &&
             r.stillMs >= REST_MIN_STILL_MS &&
+            // ⚠️ **מנוחה כן, שינה לא.** אותו נימוק כמו התנאי הבא: מצב שונה
+            // מבחינה פיזיולוגית, ובלי הפרדה REM היה מרים את המאגר ב-4-6
+            // זינוקים של 20-40 פעימות כל לילה.
+            !isProlongedStill(r) &&
             // ⚠️ **הבסיס בלע את האפיזודות שהוא אמור לזהות חריגה מהן.**
             // "מנוחה" הוגדרה כדומם + בלי צעדים + על היד — ורגע לפני נפילה
             // עונה על שלושתם. בנפילה של 18:30 הדופק היה 73 מול בסיס שכבר
@@ -116,45 +152,34 @@ object Baseline {
             // או נענד באמצע, ואי-אפשר לדעת אילו מהדגימות תקינות.
             r.noContact == 0
 
+    private const val KEY_AWAKE = "awake"
+
     fun learn(context: Context, r: SampleStore.Record) {
         if (!isResting(r)) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val key = "h${r.hourOfDay}"
-        val values = (prefs.getString(key, "") ?: "")
+        val values = (prefs.getString(KEY_AWAKE, "") ?: "")
             .split(',').mapNotNull { it.trim().toIntOrNull() }
             .plus(r.bpm)
             .takeLast(KEEP_PER_BUCKET)
-        prefs.edit().putString(key, values.joinToString(",")).apply()
+        prefs.edit().putString(KEY_AWAKE, values.joinToString(",")).apply()
     }
 
     /**
-     * רמת-הייחוס לשעה נתונה: החציון והפיזור, ומאיזה תא הם הגיעו.
+     * רמת-הייחוס: החציון והפיזור של הערות שלו, בלי פילוח לפי שעה.
      *
-     * ⚠️ **הנפילה-חזרה כאן היא העיקר.** 24 תאים שעתיים מול שבוע נתונים
-     * נותנים כ-7 קריאות לתא, והרבה תאים יהיו ריקים לגמרי. לכן: תא שעתי
-     * אם יש בו מספיק, אחרת בלוק של 4 שעות, אחרת הכל. מתדרדר בחן במקום
-     * להישבר או להשוות לחציון של שלוש דגימות.
+     * ⚠️ ראו הערת-המחלקה למה שעת-היום הוחלפה במאגר אחד. `source` נשאר
+     * בערך קבוע "awake" — השדה נשמר מסיבות תאימות (מוצג במסך הבדיקה
+     * ונשמר בייצוא), אבל אין יותר כמה מקורות להבדיל ביניהם.
      */
-    fun levelFor(context: Context, hourOfDay: Int): Level? {
+    fun levelFor(context: Context): Level? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val read = { h: Int ->
-            (prefs.getString("h$h", "") ?: "").split(',').mapNotNull { it.trim().toIntOrNull() }
-        }
-
-        val exact = read(hourOfDay)
-        if (exact.size >= MIN_SAMPLES_PER_BUCKET) return level(exact, "hour")
-
-        // בלוק של 4 שעות סביב אותה שעה — קרוב מבחינת מקצב יומי
-        val blockStart = (hourOfDay / 4) * 4
-        val block = (blockStart until blockStart + 4).flatMap { read(it % 24) }
-        if (block.size >= MIN_SAMPLES_PER_BUCKET) return level(block, "block")
-
-        val all = (0 until 24).flatMap { read(it) }
-        if (all.size >= MIN_SAMPLES_PER_BUCKET) return level(all, "all")
+        val values = (prefs.getString(KEY_AWAKE, "") ?: "")
+            .split(',').mapNotNull { it.trim().toIntOrNull() }
 
         // עוד אין בסיס. ⚠️ null ולא ניחוש — בלי בסיס אין מה להשוות, וזה
         // תנאי מוצרי ולא באג: השבוע הראשון שקט מהבחינה הזו.
-        return null
+        if (values.size < MIN_SAMPLES_PER_BUCKET) return null
+        return level(values, "awake")
     }
 
     private fun level(values: List<Int>, source: String): Level {
@@ -234,16 +259,8 @@ object Baseline {
 
     fun describe(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        var filled = 0
-        var total = 0
-        for (h in 0 until 24) {
-            val n = (prefs.getString("h$h", "") ?: "")
-                .split(',')
-                .mapNotNull { it.trim().toIntOrNull() }
-                .size
-            total += n
-            if (n >= MIN_SAMPLES_PER_BUCKET) filled++
-        }
-        return "buckets_ready=$filled/24;resting_samples=$total"
+        val total = (prefs.getString(KEY_AWAKE, "") ?: "")
+            .split(',').mapNotNull { it.trim().toIntOrNull() }.size
+        return "resting_samples=$total;ready=${total >= MIN_SAMPLES_PER_BUCKET}"
     }
 }

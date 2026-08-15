@@ -116,16 +116,15 @@ class StatusActivity : Activity() {
         sb.append("סוללה:  ${last.battery}%\n\n")
 
         sb.append("── הבסיס שלך ──\n")
-        val level = Baseline.levelFor(this, last.hourOfDay)
+        val level = Baseline.levelFor(this)
         if (level == null) {
             sb.append("עוד לא נבנה\n")
         } else {
-            sb.append("רגיל בשעה זו:  ${"%.0f".format(level.medianBpm)}\n")
+            sb.append("רגיל בערות:  ${"%.0f".format(level.medianBpm)}\n")
             sb.append("פיזור:  ±${"%.0f".format(level.madBpm)}\n")
             if (last.bpm > 0) {
                 sb.append("עכשיו:  ${"%+.1f".format(Baseline.deviation(level, last.bpm))} יחידות\n")
             }
-            sb.append("מקור:  ${level.source}\n")
         }
         sb.append("${Baseline.describe(this)}\n")
         sb.append("רשומות:  ${SampleStore.count(this)}\n\n")

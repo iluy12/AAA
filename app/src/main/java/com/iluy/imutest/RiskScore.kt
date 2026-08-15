@@ -173,7 +173,7 @@ object RiskScore {
         add("posture_q", W_POSTURE_MATCHES, if (Posture.matchesDeclared(context, r)) 1.0 else null)
 
         // --- דופק מעל הרגיל שלו בשעה הזאת, בפרופורציה ---
-        val level = Baseline.levelFor(context, r.hourOfDay)
+        val level = Baseline.levelFor(context)
         add(
             "pulse_above", W_PULSE_ABOVE,
             if (level != null && r.bpm > 0) Baseline.deviation(level, r.bpm) / DEV_FULL else null
@@ -245,6 +245,11 @@ object RiskScore {
         if (r.bpm <= 0 || r.noContact > 0) return "not_worn"
         if (r.samples < Baseline.MIN_SAMPLES_IN_BURST) return "too_few_samples"
         if (r.stillMs in 0 until STILL_MIN_MS) return "moving"
+        // ⚠️ **לא "שגוי", "לא רלוונטי".** בשקט ממושך — שינה, או מצב זהה
+        // לה תפקודית — אין מה להציע: אי-אפשר להציע "לצאת קצת אוויר"
+        // למי שישן. הציון עצמו עדיין מחושב ונשמר (ראו למטה), כי הנתון
+        // הפיזיולוגי עצמו יקר; רק ההצעה נחסמת.
+        if (Baseline.isProlongedStill(r)) return "prolonged_still"
         if (!OfferBudget.hasRoomToday(context)) return "daily_budget"
         if (!OfferBudget.enoughTimeSinceLast(context)) return "too_soon"
         if (OfferBudget.inCooldownAfterReport(context)) return "cooldown"

@@ -115,6 +115,15 @@
           כמו במסכי ההתערבות האחרים: הם נפתחים מהודעה, ומסך כבוי היה הופך
           אותם לכפתור שלא מוביל לשום מקום.
         -->
+        <!-- מסך הכיול. showWhenLocked/turnScreenOn כמו כל מסך שנפתח יזום,
+             לא בתגובה למגע — בלעדיהם הוא נפתח מאחורי מסך כבוי ולא נראה. -->
+        <activity
+            android:name=".CheckInActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true" />
+
         <activity
             android:name=".MessageActivity"
             android:exported="false"

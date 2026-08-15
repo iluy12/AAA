@@ -265,6 +265,22 @@ class MainActivity : Activity() {
                     runOnUiThread { showUploadResult(result, "$n רשומות") }
                 }.start()
             })
+            // ⚠️ **קובץ נפרד מ"ייצא נתונים".** אלה התוויות — התשובות למסך
+            // הכיול — לא מדידות. לערבב אותן עם 350 עמודות של רשומות היה
+            // מקשה בדיוק על השאילתה שהן קיימות בשבילה: כמה שאלות יצאו,
+            // כמה נענו, ומה ההתפלגות.
+            container.addView(secondaryButton("ייצא בדיקות כיול ← קבל כתובת") {
+                logDisplay?.apply {
+                    text = "מייצא…"
+                    textSize = 14f
+                    visibility = android.view.View.VISIBLE
+                }
+                Thread {
+                    val body = CheckInLog.exportAll(this)
+                    val result = LogUploader.uploadText(body)
+                    runOnUiThread { showUploadResult(result, "בדיקות כיול") }
+                }.start()
+            })
             // ⚠️ **הבדיקה שהמכשיר עושה על עצמו.** כל באג שנמצא עד היום נמצא
             // מהסתכלות בטבלה ולא מקריאת הקוד, וכולם באותה דרך: שילוב שלא
             // יכול להיות. עדיף שהמכשיר יצעק בעצמו מאשר שנגלה בעוד שבועיים.

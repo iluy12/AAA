@@ -783,8 +783,18 @@ class TapDetectorService : Service(), SensorEventListener {
         )
 
         SampleStore.append(this, scored)
-        Baseline.learn(this, scored)
+
+        // ⚠️ **רשומה שחוצה את סף הבדיקה לא נכנסת לבסיס, בלי קשר לתשובה
+        // שתגיע עליה.** אחרת הבעיה שכל היום עסק בה — הבסיס בולע את מה
+        // שהוא אמור לזהות — חוזרת בדיוק דרך הדלת שנפתחה עכשיו: תגובה
+        // אמיתית עונה על isResting (דומם, בלי צעדים, תנועה נמוכה) בדיוק
+        // כמו מנוחה רגילה. סימון "כלום" בתשובה לא היה יכול לתקן את זה
+        // בדיעבד — הרשומה כבר הייתה נלמדת שניות קודם.
+        if (!CheckIn.exceedsBaseline(this, scored)) {
+            Baseline.learn(this, scored)
+        }
         Posture.learn(this, scored)
+        CheckIn.evaluate(this, scored)
 
         // ⚠️ **מצב-צל.** המנוע מחשב, מחליט, ורושם — ולא אומר כלום למשתמש.
         // רק אחרי שיצטבר פיזור אמיתי של ציונים אפשר יהיה לדעת איפה עובר
@@ -805,12 +815,12 @@ class TapDetectorService : Service(), SensorEventListener {
         }
 
         if (DebugConfig.DEBUG_TAG_ENABLED) {
-            val level = Baseline.levelFor(this, hour)
+            val level = Baseline.levelFor(this)
             // הסוגריים סביב ה-if אינם קוסמטיים — בלעדיהם צירוף מחרוזות
             // עם ביטוי-תנאי מימין קורא בצורה שקל לטעות בה.
             val levelPart = if (level != null && record.bpm > 0) {
                 "median=${"%.1f".format(level.medianBpm)};" +
-                    "mad=${"%.1f".format(level.madBpm)};src=${level.source};" +
+                    "mad=${"%.1f".format(level.madBpm)};" +
                     "dev=${"%.2f".format(Baseline.deviation(level, record.bpm))}"
             } else {
                 "level=none"
